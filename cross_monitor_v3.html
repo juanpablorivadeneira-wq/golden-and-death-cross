@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cross Monitor — Golden / Death Cross Diario</title>
+<style>
+  :root {
+    --bg: #0C0E12;
+    --panel: #14171E;
+    --panel-2: #1A1E27;
+    --line: #262B36;
+    --text: #D7DBE4;
+    --muted: #7C8494;
+    --gold: #E8B93E;
+    --gold-dim: rgba(232, 185, 62, 0.12);
+    --death: #E5484D;
+    --death-dim: rgba(229, 72, 77, 0.12);
+    --ema-fast: #E8B93E;
+    --ema-slow: #5B8DEF;
+    --mono: "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+    --sans: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  header, .status-bar { flex: 0 0 auto; }
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    padding: 16px 28px 12px; border-bottom: 1px solid var(--line);
+    flex-wrap: wrap; gap: 10px;
+  }
+  header h1 { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: 0.06em; }
+  header h1 .x { color: var(--gold); }
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls label { font-size: 12px; color: var(--muted); }
+  select, input[type="text"] {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  input[type="text"] { width: 110px; text-transform: uppercase; }
+  input[type="text"]:focus, select:focus { border-color: var(--gold); }
+  button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 14px; font-family: var(--mono); font-size: 12px;
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+  }
+  button:hover { border-color: var(--gold); color: var(--gold); }
+  button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button.primary { border-color: var(--gold); color: var(--gold); }
+  .status-bar {
+    padding: 8px 28px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+  }
+  .status-bar .live { color: var(--gold); }
+  main {
+    display: grid; grid-template-columns: 440px 1fr;
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; grid-template-rows: 45% 55%; }
+  }
+
+  /* ── Watchlist (scroll independiente) ── */
+  .watchlist {
+    border-right: 1px solid var(--line);
+    overflow-y: auto; height: 100%; min-height: 0;
+    overscroll-behavior: contain;
+  }
+  .card { border-bottom: 1px solid var(--line); cursor: pointer; transition: background 0.15s; position: relative; }
+  .card:hover, .card.selected { background: var(--panel); }
+  .card.selected::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--gold);
+  }
+  .card.state-death.selected::before { background: var(--death); }
+
+  /* Fila compacta: siempre visible */
+  .card-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+  .chev {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 11px; padding: 4px 6px; line-height: 1;
+    transition: transform 0.15s, color 0.15s; flex: 0 0 auto;
+  }
+  .chev:hover { color: var(--gold); }
+  .card.expanded .chev { transform: rotate(90deg); }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+  .ticker { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.04em; flex: 0 0 auto; }
+  .badge {
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px; flex: 0 0 auto;
+  }
+  .badge.golden { background: var(--gold-dim); color: var(--gold); border: 1px solid var(--gold); }
+  .badge.death  { background: var(--death-dim); color: var(--death); border: 1px solid var(--death); }
+  .badge.fresh { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+  @media (prefers-reduced-motion: reduce) { .badge.fresh { animation: none; } }
+  .gap-mini { font-family: var(--mono); font-size: 11px; margin-left: auto; flex: 0 0 auto; }
+  .gap-mini.golden { color: var(--gold); }
+  .gap-mini.death { color: var(--death); }
+  .sess-mini { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 0 0 auto; white-space: nowrap; }
+  .price { font-family: var(--mono); font-size: 13px; flex: 0 0 auto; min-width: 70px; text-align: right; }
+
+  /* Detalle plegable */
+  .card-body { display: none; padding: 2px 16px 12px 38px; }
+  .card.expanded .card-body { display: block; }
+  .card-detail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .metric .k { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+  .metric .v { font-family: var(--mono); font-size: 12px; margin-top: 2px; }
+  .metric .v.fast { color: var(--ema-fast); }
+  .metric .v.slow { color: var(--ema-slow); }
+  .gauge { margin-top: 10px; }
+  .gauge-track { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+  .gauge-fill.golden { background: linear-gradient(90deg, #6b5518, var(--gold)); }
+  .gauge-fill.death  { background: linear-gradient(90deg, #5c1d1f, var(--death)); }
+  .gauge-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; }
+  .gauge-label strong { color: var(--text); font-weight: 600; }
+  .card .remove {
+    background: none; border: 1px solid transparent; color: var(--muted); font-size: 15px;
+    padding: 2px 8px; display: none; cursor: pointer; flex: 0 0 auto; border-radius: 5px;
+  }
+  .card:hover .remove { display: block; }
+  .card .remove:hover { color: var(--death); border-color: var(--death); }
+  /* Modo edición: la × visible en todas las filas (funciona también en táctil) */
+  .watchlist.editing .card .remove { display: block; color: var(--death); border-color: var(--line); }
+  .watchlist.editing .card .remove:hover { border-color: var(--death); background: var(--death-dim); }
+
+  /* ── Panel del gráfico ── */
+  .chart-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+  .chart-head {
+    flex: 0 0 auto;
+    padding: 10px 20px; border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .chart-head strong { color: var(--text); font-size: 14px; }
+  .legend { display: flex; gap: 14px; font-size: 11px; }
+  .legend .sw { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .tabs { display: flex; gap: 6px; }
+  .tabs button { padding: 5px 12px; font-size: 11px; }
+  .tabs button.active { border-color: var(--gold); color: var(--gold); }
+  #own-chart { flex: 1 1 auto; min-height: 0; }
+  #tv-container { flex: 1 1 auto; min-height: 0; display: none; }
+  .alert-log {
+    flex: 0 0 auto;
+    max-height: 120px; overflow-y: auto; border-top: 1px solid var(--line);
+    padding: 8px 20px; font-family: var(--mono); font-size: 11px;
+  }
+  .alert-log .entry { padding: 3px 0; color: var(--muted); }
+  .alert-log .entry.golden { color: var(--gold); }
+  .alert-log .entry.death { color: var(--death); }
+  .empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CROSS<span class="x">×</span>MONITOR <span style="color:var(--muted); font-weight:400; font-size:12px;">EMA 50 / 200 · Diario</span></h1>
+  <div class="controls">
+    <input type="text" id="ticker-input" placeholder="Ticker" maxlength="8">
+    <button id="add-btn">Agregar</button>
+    <button id="edit-btn">Editar lista</button>
+    <label>MA
+      <select id="ma-type">
+        <option value="ema" selected>EMA</option>
+        <option value="sma">SMA</option>
+      </select>
+    </label>
+    <label>Actualizar
+      <select id="poll-interval">
+        <option value="60">1 min</option>
+        <option value="300" selected>5 min</option>
+        <option value="900">15 min</option>
+      </select>
+    </label>
+    <button id="notif-btn">Activar notificaciones</button>
+    <button id="refresh-btn" class="primary">Actualizar ahora</button>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span id="status-text">Cargando datos…</span>
+  <span>Última actualización: <span class="live" id="last-update">—</span></span>
+</div>
+
+<main>
+  <div class="watchlist" id="watchlist">
+    <div class="empty">Cargando watchlist…</div>
+  </div>
+  <div class="chart-panel">
+    <div class="chart-head">
+      <div id="chart-title">Selecciona un ticker</div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--ema-fast)"></span>EMA 50</span>
+        <span><span class="sw" style="background:var(--ema-slow)"></span>EMA 200</span>
+        <span><span class="sw" style="background:var(--gold)"></span>Golden ▲</span>
+        <span><span class="sw" style="background:var(--death)"></span>Death ▼</span>
+      </div>
+      <div class="tabs">
+        <button id="tab-own" class="active">Velas + EMAs</button>
+        <button id="tab-tv">Widget TradingView</button>
+      </div>
+    </div>
+    <div id="own-chart"></div>
+    <div id="tv-container"></div>
+    <div class="alert-log" id="alert-log">
+      <div class="entry">— Registro de alertas de la sesión —</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+  if (typeof LightweightCharts === "undefined") {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"><\/script>');
+  }
+</script>
+<script src="https://s3.tradingview.com/tv.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+//  CONFIGURACIÓN
+// ═══════════════════════════════════════════════════════
+const DEFAULT_TICKERS = ["QQQ", "META", "GOOGL", "AAPL", "MSFT", "AMD"];
+const FAST_LEN = 50;
+const SLOW_LEN = 200;
+const COLOR_FAST = "#E8B93E";
+const COLOR_SLOW = "#5B8DEF";
+const COLOR_GOLD = "#E8B93E";
+const COLOR_DEATH = "#E5484D";
+const FETCH_TIMEOUT_MS = 6000;   // ninguna petición puede colgar más de 6 s
+
+// ─────────────────────────────────────────────────────────
+//  FUENTE DE DATOS RECOMENDADA (sin proxies, 100% estable)
+//  1. Regístrate gratis en https://twelvedata.com (30 segundos)
+//  2. Copia tu API key del dashboard
+//  3. Pégala aquí abajo entre las comillas y guarda el archivo
+//  Sin clave, la app usa Yahoo Finance vía proxies públicos,
+//  que son gratuitos pero inestables (403 / failed to fetch).
+// ─────────────────────────────────────────────────────────
+const TWELVE_DATA_KEY = "";
+
+let state = {
+  tickers: [...DEFAULT_TICKERS],
+  data: {},          // ticker -> métricas
+  closes: {},        // ticker -> [{t, c}] (carga en lote, para detección)
+  ohlc: {},          // ticker -> [{t,o,h,l,c}] (bajo demanda, para las velas)
+  selected: null,
+  maType: "ema",
+  pollSeconds: 300,
+  notifEnabled: false,
+  timer: null,
+  chartMode: "own",
+  chart: null, priceSeries: null, fastSeries: null, slowSeries: null,
+  tvWidget: null
+};
+
+// ═══════════════════════════════════════════════════════
+//  RED — fetch con timeout + rotación de proxies
+// ═══════════════════════════════════════════════════════
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let preferredProxy = null;
+
+// Si la página se sirve desde el servidor local (server.py), se usa su
+// proxy /api/yahoo como primera opción — sin CORS ni proxies de terceros.
+const PROXIES = (() => {
+  const list = [];
+  if (location.protocol === "http:" || location.protocol === "https:") {
+    list.push(u => `/api/yahoo?url=${encodeURIComponent(u)}`);
+  }
+  list.push(
+    u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+    u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    u => u
+  );
+  return list;
+})();
+
+function fetchTimeout(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+  return fetch(url, { signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
+function proxyOrder() {
+  const order = [];
+  if (preferredProxy != null) order.push(preferredProxy);
+  for (let i = 0; i < PROXIES.length; i++) if (i !== preferredProxy) order.push(i);
+  return order;
+}
+
+// Intenta una URL de Yahoo a través de los proxies; devuelve el JSON
+async function fetchJson(yUrl) {
+  let lastErr = null;
+  for (const idx of proxyOrder()) {
+    try {
+      const res = await fetchTimeout(PROXIES[idx](yUrl));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      preferredProxy = idx;
+      return json;
+    } catch (e) {
+      lastErr = e.name === "AbortError" ? new Error("timeout") : e;
+    }
+  }
+  throw lastErr || new Error("Sin conexión a datos");
+}
+
+// ═══════════════════════════════════════════════════════
+//  DATOS
+//  1) Carga en LOTE: un solo request trae los cierres de
+//     TODA la watchlist (endpoint spark de Yahoo)
+//  2) OHLC bajo demanda: solo para el ticker del gráfico
+// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//  TWELVE DATA — petición directa desde el navegador (CORS
+//  habilitado, sin proxies). Trae OHLC de todos los tickers
+//  en una sola llamada.
+// ═══════════════════════════════════════════════════════
+async function fetchTwelveBatch(tickers) {
+  const syms = tickers.join(",");
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(syms)}&interval=1day&outputsize=600&apikey=${TWELVE_DATA_KEY}`;
+  const res = await fetchTimeout(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.code && json.message) throw new Error(json.message); // errores de la API (clave inválida, límite)
+
+  const out = { closes: {}, ohlc: {} };
+  // Con un solo símbolo la respuesta viene plana; con varios, viene indexada por ticker
+  const entries = tickers.length === 1 ? { [tickers[0]]: json } : json;
+  for (const t of tickers) {
+    const item = entries[t];
+    if (!item || item.status === "error" || !Array.isArray(item.values)) continue;
+    const bars = item.values
+      .map(v => ({
+        t: Math.floor(new Date(v.datetime + "T00:00:00Z").getTime() / 1000),
+        o: parseFloat(v.open), h: parseFloat(v.high),
+        l: parseFloat(v.low), c: parseFloat(v.close)
+      }))
+      .reverse(); // Twelve Data entrega del más reciente al más antiguo
+    if (bars.length >= SLOW_LEN + 10) {
+      out.ohlc[t] = bars;
+      out.closes[t] = bars.map(b => ({ t: b.t, c: b.c }));
+    }
+  }
+  return out;
+}
+
+async function fetchBatchCloses(tickers) {
+  const syms = tickers.map(encodeURIComponent).join(",");
+  const yUrl = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${syms}&range=2y&interval=1d`;
+  const json = await fetchJson(yUrl);
+  const results = json?.spark?.result;
+  if (!Array.isArray(results)) throw new Error("Respuesta spark sin datos");
+  const out = {};
+  for (const r of results) {
+    const resp = r?.response?.[0];
+    const times = resp?.timestamp;
+    const closes = resp?.indicators?.quote?.[0]?.close;
+    if (!times || !closes) continue;
+    const bars = [];
+    for (let i = 0; i < closes.length; i++) {
+      if (closes[i] != null) bars.push({ t: times[i], c: closes[i] });
+    }
+    if (bars.length >= SLOW_LEN + 10) out[r.symbol] = bars;
+  }
+  return out;
+}
+
+// Fallback por ticker (v8/chart, solo cierres) si spark falla
+async function fetchOneCloses(ticker) {
+  const yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=2y`;
+  const json = await fetchJson(yUrl);
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error("Respuesta sin datos");
+  const closes = result.indicators.quote[0].close;
+  const times = result.timestamp;
+  const bars = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (closes[i] != null) bars.push({ t: times[i], c: closes[i] });
+  }
+  if (bars.length < SLOW_LEN + 10) throw new Error("Historial insuficiente");
+  return bars;
+}
+
+// OHLC completo para el gráfico de velas (solo el ticker seleccionado)
+async function fetchOhlc(ticker) {
+  const yUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=2y`;
+  const json = await fetchJson(yUrl);
+  const result = json?.chart?.result?.[0];
+  if (!result) throw new Error("Respuesta sin datos");
+  const q = result.indicators.quote[0];
+  const times = result.timestamp;
+  const bars = [];
+  for (let i = 0; i < q.close.length; i++) {
+    if (q.close[i] != null && q.open[i] != null) {
+      bars.push({ t: times[i], o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i] });
+    }
+  }
+  return bars;
+}
+
+// ═══════════════════════════════════════════════════════
+//  MEDIAS MÓVILES Y DETECCIÓN DE CRUCES
+// ═══════════════════════════════════════════════════════
+function smaSeries(closes, len) {
+  const out = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    sum += closes[i];
+    if (i >= len) sum -= closes[i - len];
+    if (i >= len - 1) out[i] = sum / len;
+  }
+  return out;
+}
+
+function emaSeries(closes, len) {
+  const out = new Array(closes.length).fill(null);
+  const k = 2 / (len + 1);
+  let ema = null, seed = 0;
+  for (let i = 0; i < closes.length; i++) {
+    if (i < len - 1) { seed += closes[i]; continue; }
+    if (i === len - 1) { ema = (seed + closes[i]) / len; out[i] = ema; continue; }
+    ema = closes[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+
+function computeMAs(bars) {
+  const closes = bars.map(b => b.c);
+  const maFn = state.maType === "ema" ? emaSeries : smaSeries;
+  return { fast: maFn(closes, FAST_LEN), slow: maFn(closes, SLOW_LEN) };
+}
+
+function findCrosses(fast, slow) {
+  const crosses = [];
+  for (let i = SLOW_LEN; i < fast.length; i++) {
+    if (fast[i] == null || slow[i] == null || fast[i - 1] == null || slow[i - 1] == null) continue;
+    const nowAbove = fast[i] > slow[i];
+    const prevAbove = fast[i - 1] > slow[i - 1];
+    if (nowAbove !== prevAbove) crosses.push({ idx: i, type: nowAbove ? "golden" : "death" });
+  }
+  return crosses;
+}
+
+function analyze(bars) {
+  const { fast, slow } = computeMAs(bars);
+  const n = bars.length - 1;
+  const regime = fast[n] > slow[n] ? "golden" : "death";
+  const crosses = findCrosses(fast, slow);
+  const last = crosses.length ? crosses[crosses.length - 1] : null;
+
+  const gap = fast[n] - slow[n];
+  const gapPct = (gap / slow[n]) * 100;
+  const gapPrev = fast[n - 5] - slow[n - 5];
+  const dailyConv = (gapPrev - gap) / 5;
+  const converging = (gap > 0 && dailyConv > 0) || (gap < 0 && dailyConv < 0);
+  let estDays = null;
+  if (converging && Math.abs(dailyConv) > 1e-9) {
+    estDays = Math.abs(gap) / Math.abs(dailyConv);
+    if (estDays > 250) estDays = null;
+  }
+
+  return {
+    price: bars[n].c,
+    maFast: fast[n], maSlow: slow[n], regime,
+    crossDate: last ? new Date(bars[last.idx].t * 1000) : null,
+    daysAgo: last ? n - last.idx : null,
+    freshCross: last ? last.idx === n : false,
+    gapPct, estDays, converging
+  };
+}
+
+// ═══════════════════════════════════════════════════════
+//  ALERTAS
+// ═══════════════════════════════════════════════════════
+function beep(type) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = type === "golden" ? 880 : 330;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.start(); osc.stop(ctx.currentTime + 0.6);
+  } catch (e) { /* audio no disponible */ }
+}
+
+function notify(ticker, type, price) {
+  const title = type === "golden" ? `GOLDEN CROSS — ${ticker}` : `DEATH CROSS — ${ticker}`;
+  const body = `${state.maType.toUpperCase()}${FAST_LEN} cruzó ${type === "golden" ? "por encima" : "por debajo"} de ${state.maType.toUpperCase()}${SLOW_LEN}. Precio: ${price.toFixed(2)}`;
+  logAlert(`${new Date().toLocaleTimeString()} · ${title} · ${body}`, type);
+  beep(type);
+  if (state.notifEnabled && Notification.permission === "granted") {
+    new Notification(title, { body });
+  }
+}
+
+function logAlert(text, type) {
+  const log = document.getElementById("alert-log");
+  const div = document.createElement("div");
+  div.className = `entry ${type || ""}`;
+  div.textContent = text;
+  log.insertBefore(div, log.children[1] || null);
+}
+
+// ═══════════════════════════════════════════════════════
+//  ACTUALIZACIÓN
+// ═══════════════════════════════════════════════════════
+function processTicker(t, bars) {
+  const prev = state.data[t];
+  const result = analyze(bars);
+  if (prev && !prev.error && prev.regime !== result.regime) {
+    notify(t, result.regime, result.price);
+  } else if ((!prev || prev.error) && result.freshCross) {
+    notify(t, result.regime, result.price);
+  }
+  state.data[t] = result;
+  state.closes[t] = bars;
+}
+
+async function refreshAll() {
+  const statusEl = document.getElementById("status-text");
+  let ok = 0, fail = 0;
+
+  // Ruta preferida: Twelve Data directo (si hay clave configurada)
+  if (TWELVE_DATA_KEY) {
+    statusEl.textContent = "Consultando Twelve Data (directo, sin proxies)…";
+    try {
+      const td = await fetchTwelveBatch(state.tickers);
+      for (const t of state.tickers) {
+        if (td.closes[t]) {
+          processTicker(t, td.closes[t]);
+          state.ohlc[t] = td.ohlc[t]; // velas disponibles de inmediato
+          ok++;
+        } else {
+          state.data[t] = { error: "Sin datos (ticker o límite de la API)" };
+          fail++;
+        }
+      }
+      renderWatchlist();
+      await finishRefresh(ok, fail, "Twelve Data");
+      return;
+    } catch (e) {
+      logAlert(`Twelve Data falló (${e.message}) — intentando Yahoo vía proxies`);
+      ok = 0; fail = 0;
+    }
+  }
+
+  statusEl.textContent = "Consultando watchlist (carga en lote)…";
+
+  // Ruta rápida: un solo request para todos los tickers
+  let batch = null;
+  try {
+    batch = await fetchBatchCloses(state.tickers);
+  } catch (e) {
+    logAlert(`Carga en lote falló (${e.message}) — usando modo individual`);
+  }
+
+  if (batch) {
+    for (const t of state.tickers) {
+      if (batch[t]) { processTicker(t, batch[t]); ok++; }
+      else { state.data[t] = { error: "Sin datos en la respuesta" }; fail++; }
+    }
+    renderWatchlist();
+  } else {
+    // Fallback: por ticker, secuencial, con timeout de 6 s por intento
+    for (let i = 0; i < state.tickers.length; i++) {
+      const t = state.tickers[i];
+      statusEl.textContent = `Consultando ${t}… (${i + 1}/${state.tickers.length})`;
+      try {
+        processTicker(t, await fetchOneCloses(t));
+        ok++;
+      } catch (e) {
+        state.data[t] = { error: e.message };
+        fail++;
+      }
+      renderWatchlist();
+      if (i < state.tickers.length - 1) await sleep(1000);
+    }
+  }
+
+  await finishRefresh(ok, fail, "Yahoo Finance");
+}
+
+async function finishRefresh(ok, fail, source) {
+  const statusEl = document.getElementById("status-text");
+  // Segunda pasada: si hubo fallos pero también éxitos, ya conocemos un
+  // proxy que funciona — reintentar los fallidos con él
+  let failed = state.tickers.filter(t => state.data[t] && state.data[t].error);
+  if (failed.length > 0 && ok > 0) {
+    for (const t of failed) {
+      statusEl.textContent = `Reintentando ${t}…`;
+      try {
+        processTicker(t, await fetchOneCloses(t));
+        ok++; fail--;
+      } catch (e) {
+        state.data[t] = { error: e.message };
+      }
+      renderWatchlist();
+      await sleep(600);
+    }
+  }
+
+  statusEl.textContent = fail === 0
+    ? `${ok} tickers monitoreados · datos diarios (${source})`
+    : `${ok} OK · ${fail} con error de datos (${source})`;
+  document.getElementById("last-update").textContent = new Date().toLocaleTimeString();
+
+  if (!state.selected) {
+    const first = state.tickers.find(t => state.closes[t]);
+    if (first) selectTicker(first);
+  } else if (state.chartMode === "own") {
+    renderOwnChart(state.selected);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  WATCHLIST
+// ═══════════════════════════════════════════════════════
+let expanded = new Set(); // tickers con el detalle abierto
+
+function renderWatchlist() {
+  const el = document.getElementById("watchlist");
+  el.innerHTML = "";
+  if (state.tickers.length === 0) {
+    el.innerHTML = '<div class="empty">Agrega un ticker para comenzar el monitoreo.</div>';
+    return;
+  }
+  const maLabel = state.maType.toUpperCase();
+  for (const t of state.tickers) {
+    const d = state.data[t];
+    const isExp = expanded.has(t);
+    const card = document.createElement("div");
+    card.className = "card"
+      + (state.selected === t ? " selected" : "")
+      + (d && d.regime === "death" ? " state-death" : "")
+      + (isExp ? " expanded" : "");
+
+    if (!d) {
+      card.innerHTML = `<div class="card-row"><span class="ticker">${t}</span><span class="price" style="margin-left:auto;">…</span></div>`;
+    } else if (d.error) {
+      card.innerHTML = `<div class="card-row">
+          <span class="ticker">${t}</span>
+          <span class="gap-mini death" style="margin-left:auto;">${d.error}</span>
+          <button class="remove" title="Quitar" data-t="${t}">×</button>
+        </div>`;
+    } else {
+      const isG = d.regime === "golden";
+      const badgeClass = isG ? "golden" : "death";
+      const label = isG ? "GOLDEN" : "DEATH";
+      const crossInfo = d.crossDate ? `${d.crossDate.toLocaleDateString()} (hace ${d.daysAgo} sesiones)` : "—";
+      const proximity = Math.max(0, Math.min(100, 100 - (Math.abs(d.gapPct) / 5) * 100));
+      const estText = d.estDays != null
+        ? `Al ritmo actual, cruce estimado en <strong>~${Math.round(d.estDays)} sesiones</strong>`
+        : (d.converging ? "Las medias convergen lentamente" : "Las medias divergen — sin cruce a la vista");
+      // Fila compacta: lo esencial de un vistazo. Flecha abre el detalle completo.
+      card.innerHTML = `
+        <div class="card-row">
+          <button class="chev" title="Ver detalle" data-t="${t}">▶</button>
+          <span class="ticker">${t}</span>
+          <span class="badge ${badgeClass}${d.freshCross ? " fresh" : ""}">${label}${d.freshCross ? " · HOY" : ""}</span>
+          <span class="sess-mini" title="Sesiones desde el último cruce">${d.daysAgo != null ? "hace " + d.daysAgo + " ses" : "—"}</span>
+          <span class="gap-mini ${badgeClass}" title="Brecha entre medias">${d.gapPct >= 0 ? "+" : ""}${d.gapPct.toFixed(2)}%</span>
+          <span class="price">${d.price.toFixed(2)}</span>
+          <button class="remove" title="Quitar de la lista" data-t="${t}">×</button>
+        </div>
+        <div class="card-body">
+          <div class="card-detail">
+            <div class="metric"><div class="k">${maLabel} ${FAST_LEN}</div><div class="v fast">${d.maFast.toFixed(2)}</div></div>
+            <div class="metric"><div class="k">${maLabel} ${SLOW_LEN}</div><div class="v slow">${d.maSlow.toFixed(2)}</div></div>
+            <div class="metric"><div class="k">Último cruce</div><div class="v" style="font-size:11px;">${crossInfo}</div></div>
+          </div>
+          <div class="gauge">
+            <div class="gauge-track"><div class="gauge-fill ${badgeClass}" style="width:${proximity}%"></div></div>
+            <div class="gauge-label">Brecha entre medias: <strong>${d.gapPct.toFixed(2)}%</strong> · ${estText}</div>
+          </div>
+        </div>`;
+    }
+    card.addEventListener("click", (ev) => {
+      if (ev.target.classList.contains("remove")) return;
+      if (ev.target.classList.contains("chev")) {
+        // La flecha solo pliega/despliega, sin cambiar la selección
+        if (expanded.has(t)) expanded.delete(t); else expanded.add(t);
+        renderWatchlist();
+        return;
+      }
+      selectTicker(t);
+    });
+    const rm = card.querySelector(".remove");
+    if (rm) rm.addEventListener("click", (ev) => { ev.stopPropagation(); removeTicker(t); });
+    el.appendChild(card);
+  }
+}
+
+// Modo edición: muestra la × en todas las filas (necesario en pantallas táctiles)
+let editMode = false;
+function toggleEditMode() {
+  editMode = !editMode;
+  document.getElementById("watchlist").classList.toggle("editing", editMode);
+  const btn = document.getElementById("edit-btn");
+  btn.textContent = editMode ? "Listo" : "Editar lista";
+  btn.classList.toggle("primary", editMode);
+}
+
+// ═══════════════════════════════════════════════════════
+//  GRÁFICO PROPIO — lightweight-charts (librería de TradingView)
+// ═══════════════════════════════════════════════════════
+function initOwnChart() {
+  const container = document.getElementById("own-chart");
+  container.innerHTML = "";
+  if (typeof LightweightCharts === "undefined") {
+    container.innerHTML = '<div class="empty">No se pudo cargar la librería de gráficos. Usando el widget de TradingView.</div>';
+    setChartMode("tv");
+    return;
+  }
+  state.chart = LightweightCharts.createChart(container, {
+    layout: { background: { color: "transparent" }, textColor: "#7C8494", fontFamily: "Consolas, monospace" },
+    grid: { vertLines: { color: "#1A1E27" }, horzLines: { color: "#1A1E27" } },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: "#262B36" },
+    timeScale: { borderColor: "#262B36", timeVisible: false },
+    autoSize: true
+  });
+}
+
+function clearSeries() {
+  for (const key of ["priceSeries", "fastSeries", "slowSeries"]) {
+    if (state[key]) { try { state.chart.removeSeries(state[key]); } catch (e) {} state[key] = null; }
+  }
+}
+
+function renderOwnChart(t) {
+  if (!state.chart) return;
+  const ohlc = state.ohlc[t];
+  const bars = ohlc || state.closes[t];
+  if (!bars) return;
+
+  const { fast, slow } = computeMAs(bars);
+  const maLabel = state.maType.toUpperCase();
+  clearSeries();
+
+  if (ohlc) {
+    state.priceSeries = state.chart.addCandlestickSeries({
+      upColor: "#26A69A", downColor: "#EF5350",
+      borderUpColor: "#26A69A", borderDownColor: "#EF5350",
+      wickUpColor: "#26A69A", wickDownColor: "#EF5350"
+    });
+    state.priceSeries.setData(bars.map(b => ({ time: b.t, open: b.o, high: b.h, low: b.l, close: b.c })));
+  } else {
+    // Aún sin OHLC: línea de cierres mientras llega el detalle de velas
+    state.priceSeries = state.chart.addLineSeries({ color: "#9AA3B2", lineWidth: 1, priceLineVisible: true });
+    state.priceSeries.setData(bars.map(b => ({ time: b.t, value: b.c })));
+  }
+
+  state.fastSeries = state.chart.addLineSeries({
+    color: COLOR_FAST, lineWidth: 2, priceLineVisible: false, title: `${maLabel} ${FAST_LEN}`
+  });
+  state.slowSeries = state.chart.addLineSeries({
+    color: COLOR_SLOW, lineWidth: 2, priceLineVisible: false, title: `${maLabel} ${SLOW_LEN}`
+  });
+  state.fastSeries.setData(bars.map((b, i) => fast[i] != null ? { time: b.t, value: fast[i] } : null).filter(Boolean));
+  state.slowSeries.setData(bars.map((b, i) => slow[i] != null ? { time: b.t, value: slow[i] } : null).filter(Boolean));
+
+  const markers = findCrosses(fast, slow).map(c => ({
+    time: bars[c.idx].t,
+    position: c.type === "golden" ? "belowBar" : "aboveBar",
+    color: c.type === "golden" ? COLOR_GOLD : COLOR_DEATH,
+    shape: c.type === "golden" ? "arrowUp" : "arrowDown",
+    text: c.type === "golden" ? "GOLDEN" : "DEATH"
+  }));
+  state.priceSeries.setMarkers(markers);
+  state.chart.timeScale().fitContent();
+}
+
+// Trae las velas OHLC del ticker seleccionado en segundo plano
+async function ensureOhlc(t) {
+  if (state.ohlc[t]) return;
+  try {
+    const bars = await fetchOhlc(t);
+    if (bars.length > 0) {
+      state.ohlc[t] = bars;
+      if (state.selected === t && state.chartMode === "own") renderOwnChart(t);
+    }
+  } catch (e) { /* se queda con la línea de cierres */ }
+}
+
+// ═══════════════════════════════════════════════════════
+//  WIDGET TRADINGVIEW (pestaña alternativa)
+// ═══════════════════════════════════════════════════════
+function renderTVWidget(t) {
+  const el = document.getElementById("tv-container");
+  el.innerHTML = "";
+  if (typeof TradingView === "undefined") {
+    el.innerHTML = '<div class="empty">No se pudo cargar el widget de TradingView. Verifica tu conexión.</div>';
+    return;
+  }
+  const studyId = state.maType === "ema" ? "MAExp@tv-basicstudies" : "MASimple@tv-basicstudies";
+  state.tvWidget = new TradingView.widget({
+    container_id: "tv-container",
+    symbol: t,
+    interval: "D",
+    autosize: true,
+    theme: "dark",
+    style: "1",
+    locale: "es",
+    timezone: "America/Guayaquil",
+    hide_side_toolbar: false,
+    allow_symbol_change: true,
+    studies: [
+      { id: studyId, inputs: { length: FAST_LEN } },
+      { id: studyId, inputs: { length: SLOW_LEN } }
+    ]
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  SELECCIÓN Y PESTAÑAS
+// ═══════════════════════════════════════════════════════
+function selectTicker(t) {
+  state.selected = t;
+  renderWatchlist();
+  document.getElementById("chart-title").innerHTML = `<strong>${t}</strong> · Diario`;
+  if (state.chartMode === "own") {
+    renderOwnChart(t);   // instantáneo con los cierres del lote
+    ensureOhlc(t);       // las velas llegan en segundo plano
+  } else {
+    renderTVWidget(t);
+  }
+}
+
+function setChartMode(mode) {
+  state.chartMode = mode;
+  document.getElementById("tab-own").classList.toggle("active", mode === "own");
+  document.getElementById("tab-tv").classList.toggle("active", mode === "tv");
+  document.getElementById("own-chart").style.display = mode === "own" ? "block" : "none";
+  document.getElementById("tv-container").style.display = mode === "tv" ? "block" : "none";
+  if (state.selected) {
+    if (mode === "own") { renderOwnChart(state.selected); ensureOhlc(state.selected); }
+    else renderTVWidget(state.selected);
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  EVENTOS DE UI
+// ═══════════════════════════════════════════════════════
+async function addTicker() {
+  const input = document.getElementById("ticker-input");
+  const t = input.value.trim().toUpperCase();
+  if (!t || state.tickers.includes(t)) { input.value = ""; return; }
+  state.tickers.push(t);
+  input.value = "";
+  renderWatchlist();
+  const statusEl = document.getElementById("status-text");
+  statusEl.textContent = `Consultando ${t}…`;
+  try {
+    if (TWELVE_DATA_KEY) {
+      const td = await fetchTwelveBatch([t]);
+      if (!td.closes[t]) throw new Error("Sin datos para este ticker");
+      processTicker(t, td.closes[t]);
+      state.ohlc[t] = td.ohlc[t];
+    } else {
+      processTicker(t, await fetchOneCloses(t));
+    }
+    statusEl.textContent = `${t} agregado · ${state.tickers.length} tickers monitoreados`;
+    renderWatchlist();
+    selectTicker(t);
+  } catch (e) {
+    state.data[t] = { error: e.message };
+    statusEl.textContent = `Error al consultar ${t}`;
+    renderWatchlist();
+  }
+}
+
+function removeTicker(t) {
+  state.tickers = state.tickers.filter(x => x !== t);
+  delete state.data[t];
+  delete state.closes[t];
+  delete state.ohlc[t];
+  if (state.selected === t) state.selected = null;
+  renderWatchlist();
+}
+
+function restartTimer() {
+  if (state.timer) clearInterval(state.timer);
+  state.timer = setInterval(refreshAll, state.pollSeconds * 1000);
+}
+
+document.getElementById("add-btn").addEventListener("click", addTicker);
+document.getElementById("edit-btn").addEventListener("click", toggleEditMode);
+document.getElementById("ticker-input").addEventListener("keydown", e => { if (e.key === "Enter") addTicker(); });
+document.getElementById("refresh-btn").addEventListener("click", refreshAll);
+document.getElementById("ma-type").addEventListener("change", e => {
+  state.maType = e.target.value;
+  for (const t of state.tickers) {
+    if (state.closes[t]) state.data[t] = analyze(state.closes[t]);
+  }
+  renderWatchlist();
+  if (state.selected) {
+    if (state.chartMode === "own") renderOwnChart(state.selected);
+    else renderTVWidget(state.selected);
+  }
+});
+document.getElementById("poll-interval").addEventListener("change", e => {
+  state.pollSeconds = parseInt(e.target.value, 10);
+  restartTimer();
+});
+document.getElementById("notif-btn").addEventListener("click", async () => {
+  if (!("Notification" in window)) { logAlert("Este navegador no soporta notificaciones de escritorio."); return; }
+  const perm = await Notification.requestPermission();
+  state.notifEnabled = perm === "granted";
+  document.getElementById("notif-btn").textContent = state.notifEnabled ? "Notificaciones activas" : "Activar notificaciones";
+  logAlert(state.notifEnabled ? "Notificaciones de escritorio activadas." : "Permiso de notificaciones denegado.");
+});
+document.getElementById("tab-own").addEventListener("click", () => setChartMode("own"));
+document.getElementById("tab-tv").addEventListener("click", () => setChartMode("tv"));
+
+// Errores visibles en el registro
+window.addEventListener("error", e => logAlert(`Error: ${e.message}`));
+
+// Inicio — el gráfico nunca bloquea la carga de datos
+try { initOwnChart(); } catch (e) {
+  logAlert(`Gráfico propio no disponible: ${e.message} — usando widget TradingView`);
+  setChartMode("tv");
+}
+refreshAll();
+restartTimer();
+</script>
+</body>
+</html>
