@@ -1,0 +1,17 @@
+{
+  "name": "Cross Monitor — Golden / Death Cross",
+  "short_name": "Cross Monitor",
+  "description": "Monitor de cruces Golden/Death de medias móviles con alertas push",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0C0E12",
+  "theme_color": "#0C0E12",
+  "lang": "es",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,173 @@
+/* Cross Monitor PWA — estilos migrados del prototipo cross_monitor_v3.html */
+:root {
+  --bg: #0C0E12;
+  --panel: #14171E;
+  --panel-2: #1A1E27;
+  --line: #262B36;
+  --text: #D7DBE4;
+  --muted: #7C8494;
+  --gold: #E8B93E;
+  --gold-dim: rgba(232, 185, 62, 0.12);
+  --death: #E5484D;
+  --death-dim: rgba(229, 72, 77, 0.12);
+  --ema-fast: #E8B93E;
+  --ema-slow: #5B8DEF;
+  --mono: "SF Mono", "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
+  --sans: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--sans);
+  height: 100vh; height: 100dvh; overflow: hidden;
+  display: flex; flex-direction: column;
+  /* Safe areas de iOS (notch y barra inferior) */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+header, .status-bar { flex: 0 0 auto; }
+header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 16px 28px 12px; border-bottom: 1px solid var(--line);
+  flex-wrap: wrap; gap: 10px;
+}
+header h1 { font-family: var(--mono); font-size: 17px; font-weight: 600; letter-spacing: 0.06em; }
+header h1 .x { color: var(--gold); }
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls label { font-size: 12px; color: var(--muted); }
+select, input[type="text"], input[type="password"] {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 10px; font-family: var(--mono); font-size: 12px; outline: none;
+}
+input[type="text"] { width: 110px; text-transform: uppercase; }
+input[type="text"]:focus, input[type="password"]:focus, select:focus { border-color: var(--gold); }
+button {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 14px; font-family: var(--mono); font-size: 12px;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+button:hover { border-color: var(--gold); color: var(--gold); }
+button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+button.primary { border-color: var(--gold); color: var(--gold); }
+.status-bar {
+  padding: 8px 28px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+  border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+}
+.status-bar .live { color: var(--gold); }
+main {
+  display: grid; grid-template-columns: 440px 1fr;
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+}
+@media (max-width: 980px) {
+  main { grid-template-columns: 1fr; grid-template-rows: 45% 55%; }
+  header { padding: 12px 16px 10px; }
+  .status-bar { padding: 8px 16px; }
+}
+
+/* ── Watchlist (scroll independiente) ── */
+.watchlist {
+  border-right: 1px solid var(--line);
+  overflow-y: auto; height: 100%; min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.card { border-bottom: 1px solid var(--line); cursor: pointer; transition: background 0.15s; position: relative; }
+.card:hover, .card.selected { background: var(--panel); }
+.card.selected::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--gold);
+}
+.card.state-death.selected::before { background: var(--death); }
+
+/* Fila compacta: siempre visible */
+.card-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.chev {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 11px; padding: 4px 6px; line-height: 1;
+  transition: transform 0.15s, color 0.15s; flex: 0 0 auto;
+}
+.chev:hover { color: var(--gold); }
+.card.expanded .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
+.ticker { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.04em; flex: 0 0 auto; }
+.badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.08em; padding: 2px 7px; border-radius: 4px; flex: 0 0 auto;
+}
+.badge.golden { background: var(--gold-dim); color: var(--gold); border: 1px solid var(--gold); }
+.badge.death  { background: var(--death-dim); color: var(--death); border: 1px solid var(--death); }
+.badge.fresh { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .badge.fresh { animation: none; } }
+.gap-mini { font-family: var(--mono); font-size: 11px; margin-left: auto; flex: 0 0 auto; }
+.gap-mini.golden { color: var(--gold); }
+.gap-mini.death { color: var(--death); }
+.sess-mini { font-family: var(--mono); font-size: 10px; color: var(--muted); flex: 0 0 auto; white-space: nowrap; }
+.price { font-family: var(--mono); font-size: 13px; flex: 0 0 auto; min-width: 70px; text-align: right; }
+.retry {
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  font-size: 10px; padding: 2px 8px; flex: 0 0 auto;
+}
+.retry:hover { border-color: var(--gold); color: var(--gold); }
+
+/* Detalle plegable */
+.card-body { display: none; padding: 2px 16px 12px 38px; }
+.card.expanded .card-body { display: block; }
+.card-detail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.metric .k { font-size: 10px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
+.metric .v { font-family: var(--mono); font-size: 12px; margin-top: 2px; }
+.metric .v.fast { color: var(--ema-fast); }
+.metric .v.slow { color: var(--ema-slow); }
+.gauge { margin-top: 10px; }
+.gauge-track { height: 6px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.gauge-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.gauge-fill.golden { background: linear-gradient(90deg, #6b5518, var(--gold)); }
+.gauge-fill.death  { background: linear-gradient(90deg, #5c1d1f, var(--death)); }
+.gauge-label { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 5px; }
+.gauge-label strong { color: var(--text); font-weight: 600; }
+.card .remove {
+  background: none; border: 1px solid transparent; color: var(--muted); font-size: 15px;
+  padding: 2px 8px; display: none; cursor: pointer; flex: 0 0 auto; border-radius: 5px;
+}
+.card:hover .remove { display: block; }
+.card .remove:hover { color: var(--death); border-color: var(--death); }
+/* Modo edición: la × visible en todas las filas (funciona también en táctil) */
+.watchlist.editing .card .remove { display: block; color: var(--death); border-color: var(--line); }
+.watchlist.editing .card .remove:hover { border-color: var(--death); background: var(--death-dim); }
+
+/* ── Panel del gráfico ── */
+.chart-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.chart-head {
+  flex: 0 0 auto;
+  padding: 10px 20px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+}
+.chart-head strong { color: var(--text); font-size: 14px; }
+.legend { display: flex; gap: 14px; font-size: 11px; }
+.legend .sw { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+#own-chart { flex: 1 1 auto; min-height: 0; }
+.alert-log {
+  flex: 0 0 auto;
+  max-height: 120px; overflow-y: auto; border-top: 1px solid var(--line);
+  padding: 8px 20px; font-family: var(--mono); font-size: 11px;
+}
+.alert-log .entry { padding: 3px 0; color: var(--muted); }
+.alert-log .entry.golden { color: var(--gold); }
+.alert-log .entry.death { color: var(--death); }
+.empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── Overlay de autenticación ── */
+.auth-overlay {
+  position: fixed; inset: 0; background: rgba(12, 14, 18, 0.92);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.auth-box {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 28px; width: min(340px, 90vw); display: flex; flex-direction: column; gap: 12px;
+}
+.auth-box h2 { font-family: var(--mono); font-size: 15px; }
+.auth-box p { font-size: 12px; color: var(--muted); }
+.auth-box .error { color: var(--death); font-size: 12px; min-height: 15px; }
+.hidden { display: none !important; }
