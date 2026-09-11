@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cross Monitor — Golden / Death Cross Diario</title>
+<meta name="theme-color" content="#0C0E12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Cross Monitor">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="auth-overlay hidden" id="auth-overlay">
+  <div class="auth-box">
+    <h2>CROSS<span style="color:var(--gold)">×</span>MONITOR</h2>
+    <p>Ingresa el token de acceso configurado en el servidor (AUTH_TOKEN).</p>
+    <input type="password" id="auth-input" placeholder="Token" autocomplete="current-password">
+    <div class="error" id="auth-error"></div>
+    <button class="primary" id="auth-btn">Entrar</button>
+  </div>
+</div>
+
+<header>
+  <h1>CROSS<span class="x">×</span>MONITOR <span id="ma-subtitle" style="color:var(--muted); font-weight:400; font-size:12px;">EMA 50 / 200 · Diario</span></h1>
+  <div class="controls">
+    <input type="text" id="ticker-input" placeholder="Ticker" maxlength="8">
+    <button id="add-btn">Agregar</button>
+    <button id="edit-btn">Editar lista</button>
+    <label>MA
+      <select id="ma-type">
+        <option value="ema" selected>EMA</option>
+        <option value="sma">SMA</option>
+      </select>
+    </label>
+    <label>Actualizar
+      <select id="poll-interval">
+        <option value="60">1 min</option>
+        <option value="300" selected>5 min</option>
+        <option value="900">15 min</option>
+      </select>
+    </label>
+    <button id="notif-btn">Activar notificaciones</button>
+    <button id="refresh-btn" class="primary">Actualizar ahora</button>
+  </div>
+</header>
+
+<div class="status-bar">
+  <span id="status-text">Cargando datos…</span>
+  <span>Última actualización: <span class="live" id="last-update">—</span></span>
+</div>
+
+<main>
+  <div class="watchlist" id="watchlist">
+    <div class="empty">Cargando watchlist…</div>
+  </div>
+  <div class="chart-panel">
+    <div class="chart-head">
+      <div id="chart-title">Selecciona un ticker</div>
+      <div class="legend" id="legend">
+        <span><span class="sw" style="background:var(--ema-fast)"></span><span id="legend-fast">EMA 50</span></span>
+        <span><span class="sw" style="background:var(--ema-slow)"></span><span id="legend-slow">EMA 200</span></span>
+        <span><span class="sw" style="background:var(--gold)"></span>Golden ▲</span>
+        <span><span class="sw" style="background:var(--death)"></span>Death ▼</span>
+      </div>
+    </div>
+    <div id="own-chart"></div>
+    <div class="alert-log" id="alert-log">
+      <div class="entry">— Registro de alertas de la sesión —</div>
+    </div>
+  </div>
+</main>
+
+<script src="vendor/lightweight-charts.standalone.production.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
