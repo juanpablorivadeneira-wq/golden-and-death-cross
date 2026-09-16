@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 300
 MAX_RETRIES = 3
-HISTORY_YEARS = 2
+HISTORY_YEARS = 5
 
 _cache: dict[str, tuple[float, list[Bar]]] = {}
 _cache_lock = threading.Lock()
@@ -62,7 +62,7 @@ def _fetch_yfinance(ticker: str) -> list[Bar]:
 def _fetch_twelvedata(ticker: str) -> list[Bar]:
     key = get_settings().twelve_data_key
     url = ("https://api.twelvedata.com/time_series"
-           f"?symbol={ticker}&interval=1day&outputsize=600&apikey={key}")
+           f"?symbol={ticker}&interval=1day&outputsize=1300&apikey={key}")
     resp = httpx.get(url, timeout=15)
     resp.raise_for_status()
     data = resp.json()
@@ -78,7 +78,7 @@ def _fetch_twelvedata(ticker: str) -> list[Bar]:
 
 
 def get_bars(ticker: str, force: bool = False) -> list[Bar]:
-    """Barras OHLC diarias (2 años aprox.) con caché TTL y reintentos."""
+    """Barras OHLC diarias (5 años aprox.) con caché TTL y reintentos."""
     ticker = ticker.upper()
     now = time.monotonic()
     with _cache_lock:

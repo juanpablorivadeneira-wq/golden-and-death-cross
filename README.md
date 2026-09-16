@@ -76,7 +76,7 @@ Todos los endpoints exigen el header `X-Auth-Token` excepto `/api/health`.
 | GET | /api/watchlist | Tickers con métricas completas |
 | POST | /api/watchlist/{ticker} | Agregar ticker (valida que existan datos) |
 | DELETE | /api/watchlist/{ticker} | Eliminar ticker |
-| GET | /api/quotes/{ticker}/ohlc | OHLC 2 años + MAs + cruces históricos |
+| GET | /api/quotes/{ticker}/ohlc | OHLC 5 años + MAs + cruces históricos |
 | GET/PUT | /api/settings | Tipo de MA (ema/sma) y períodos |
 | GET | /api/push/vapid-public-key | Clave pública para suscribirse |
 | POST | /api/push/subscribe | Registrar suscripción push |

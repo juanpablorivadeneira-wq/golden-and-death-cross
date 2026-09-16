@@ -455,18 +455,34 @@ function updateSummary() {
   document.getElementById("count-near").textContent = state.tickers.filter(isNear).length;
 }
 
+function crossMaturity(sessions) {
+  if (sessions == null) return null;
+  if (sessions <= 5) return "Recién cruzado";
+  if (sessions <= 60) return "Tendencia en desarrollo";
+  return "Tendencia madura";
+}
+
 function updateSelectedMetrics() {
   const d = state.tickers.find(t => t.ticker === state.selected);
   const el = document.getElementById("selected-metrics");
   el.replaceChildren();
   if (!d || d.error) return;
+  const crossValue = d.cross_date
+    ? `${d.cross_date} · hace ${d.sessions_since_cross} ${d.sessions_since_cross === 1 ? "sesión" : "sesiones"}`
+    : "Fuera del historial";
+  const maturity = crossMaturity(d.sessions_since_cross);
   for (const [label, value, color] of [["Último precio", d.price.toFixed(2), ""],
       ["Brecha entre medias", `${d.gap_pct.toFixed(2)}%`, d.regime],
-      ["Último cruce", d.cross_date || "Fuera del historial", ""]]) {
+      ["Último cruce", crossValue, ""]]) {
     const item = document.createElement("div");
     const title = document.createElement("span"); title.textContent = label;
     const valueEl = document.createElement("strong"); valueEl.textContent = value; valueEl.className = color;
-    item.append(title, valueEl); el.append(item);
+    item.append(title, valueEl);
+    if (label === "Último cruce" && maturity) {
+      const tag = document.createElement("small"); tag.className = "maturity-tag"; tag.textContent = maturity;
+      item.append(tag);
+    }
+    el.append(item);
   }
   document.getElementById("chart-caption").textContent = `Última barra: ${d.bar_date || "—"} · La sesión en curso puede variar. Alertas confirmadas a partir de las 17:00 de Nueva York.`;
 }

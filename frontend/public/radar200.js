@@ -5,6 +5,9 @@ const threshold = () => Number($("threshold").value);
 const valid = d => !d.error;
 const near = d => valid(d) && Math.abs(d.distance_pct) <= threshold();
 const signed = n => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
+const trendIcon = t => t === "up" ? "↑" : t === "down" ? "↓" : t === "flat" ? "→" : "";
+const trendClass = t => t === "up" ? "golden" : t === "down" ? "death" : "";
+const trendLabel = t => t === "up" ? "Subiendo" : t === "down" ? "Bajando" : t === "flat" ? "Plana" : "Sin datos suficientes";
 async function savedToken() {
   return new Promise(resolve => {
     const req = indexedDB.open("cross-monitor", 1);
@@ -56,7 +59,14 @@ function render() {
   for (const d of items) {
     const button = document.createElement("button"); button.className = `distance-item${radar.selected === d.ticker ? " selected" : ""}`;
     const top = document.createElement("div"); top.className = "distance-top";
-    const name = document.createElement("strong"); name.textContent = d.ticker; top.append(name);
+    const nameGroup = document.createElement("span"); nameGroup.className = "distance-name";
+    const name = document.createElement("strong"); name.textContent = d.ticker; nameGroup.append(name);
+    if (!d.error && d.ma_trend) {
+      const trend = document.createElement("span"); trend.className = `ma-trend ${trendClass(d.ma_trend)}`;
+      trend.title = `MA 200 ${trendLabel(d.ma_trend).toLowerCase()} en las últimas ${10} sesiones`;
+      trend.textContent = trendIcon(d.ma_trend); nameGroup.append(trend);
+    }
+    top.append(nameGroup);
     const distance = document.createElement("span"); distance.textContent = d.error ? "Sin datos" : signed(d.distance_pct); distance.className = d.distance_pct < 0 ? "death" : "golden"; top.append(distance);
     const bottom = document.createElement("div"); bottom.className = "distance-bottom";
     const label = document.createElement("span"); label.textContent = d.error || `${near(d) ? "Cerca" : "Lejos"} · ${d.distance_pct === 0 ? "En la media" : d.distance_pct > 0 ? "Por encima" : "Por debajo"}`;
@@ -78,7 +88,13 @@ function draw() {
   radar.candles?.setData([]); radar.average?.setData([]);
   if(!d) {$("chart-title").textContent="Sin activo seleccionado";$("chart-caption").textContent="No hay datos para dibujar.";return;}
   const title = document.createElement("strong");title.textContent=d.ticker;$("chart-title").replaceChildren(title);
-  for(const [label,value] of [["Último precio",d.price.toFixed(2)],[`${radar.type.toUpperCase()} 200`,d.average.toFixed(2)],["Distancia",signed(d.distance_pct)]]) {const div=document.createElement("div"),l=document.createElement("span"),v=document.createElement("strong");l.textContent=label;v.textContent=value;div.append(l,v);metrics.append(div);}
+  const maValue = `${d.average.toFixed(2)}${d.ma_trend ? " " + trendIcon(d.ma_trend) : ""}`;
+  for(const [label,value,cls,title] of [["Último precio",d.price.toFixed(2),"",""],
+      [`${radar.type.toUpperCase()} 200`,maValue,trendClass(d.ma_trend),d.ma_trend?`Media 200 ${trendLabel(d.ma_trend).toLowerCase()} en las últimas 10 sesiones`:""],
+      ["Distancia",signed(d.distance_pct),"",""]]) {
+    const div=document.createElement("div"),l=document.createElement("span"),v=document.createElement("strong");
+    l.textContent=label;v.textContent=value;v.className=cls;if(title)v.title=title;div.append(l,v);metrics.append(div);
+  }
   if(radar.chart){radar.candles.setData(d.bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));radar.average.applyOptions({title:`${radar.type.toUpperCase()} 200`});radar.average.setData(d.bars.flatMap((b,i)=>d.series[i]===null?[]:[{time:b.t,value:d.series[i]}]));setRange();}
   $("chart-caption").textContent=`Última barra: ${d.bar_date} · ${near(d)?"Dentro":"Fuera"} del umbral ±${threshold()}%. La sesión en curso puede variar.`;
 }

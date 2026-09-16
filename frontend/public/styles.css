@@ -90,6 +90,10 @@
 .distance-track.below span { background:var(--death); }
 .method-note { border:1px solid var(--line); border-radius:12px; margin-top:20px; padding:18px 22px; color:var(--muted); font-size:12px; line-height:1.7; }
 .radar200 .selected-metrics { gap:18px; }
+.distance-name { display:flex; align-items:baseline; gap:6px; }
+.ma-trend { font-size:12px; font-weight:700; }
+.ma-trend:not(.golden):not(.death) { color:var(--muted); }
+.maturity-tag { display:block; margin-top:2px; font-size:9px; font-weight:400; color:var(--muted); }
 
 /* Resumen compacto compartido: el gráfico es el protagonista. */
 .workspace { padding-top: 16px; }

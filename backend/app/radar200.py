@@ -2,6 +2,22 @@
 from datetime import datetime, timezone
 from . import engine
 
+TREND_LOOKBACK = 10  # sesiones hacia atrás para juzgar si la media sube o baja
+
+
+def _ma_trend(series: list, lookback: int = TREND_LOOKBACK) -> str | None:
+    """'up'/'down'/'flat' comparando la media actual contra hace `lookback` sesiones."""
+    if len(series) <= lookback:
+        return None
+    current, prev = series[-1], series[-1 - lookback]
+    if current is None or prev is None or prev <= 0:
+        return None
+    if current > prev:
+        return "up"
+    if current < prev:
+        return "down"
+    return "flat"
+
 
 def analyze(ticker, bars, ma_type="sma"):
     if len(bars) < 200:
@@ -12,5 +28,6 @@ def analyze(ticker, bars, ma_type="sma"):
         return {"ticker": ticker, "error": "Media 200 no disponible"}
     distance = (bars[-1].c / average - 1) * 100
     return {"ticker": ticker, "price": bars[-1].c, "average": average,
-            "distance_pct": distance, "bar_date": datetime.fromtimestamp(bars[-1].t, timezone.utc).strftime("%Y-%m-%d"),
+            "distance_pct": distance, "ma_trend": _ma_trend(series),
+            "bar_date": datetime.fromtimestamp(bars[-1].t, timezone.utc).strftime("%Y-%m-%d"),
             "bars": [b.model_dump() for b in bars], "series": series, "error": None}
