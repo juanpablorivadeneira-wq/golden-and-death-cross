@@ -469,7 +469,7 @@ function updateSelectedMetrics() {
   if (!d || d.error) return;
   const crossValue = d.cross_date
     ? `${d.cross_date} · hace ${d.sessions_since_cross} ${d.sessions_since_cross === 1 ? "sesión" : "sesiones"}`
-    : "Fuera del historial";
+    : (d.history_start ? `Sin cruce desde ${d.history_start}` : "Fuera del historial");
   const maturity = crossMaturity(d.sessions_since_cross);
   for (const [label, value, color] of [["Último precio", d.price.toFixed(2), ""],
       ["Brecha entre medias", `${d.gap_pct.toFixed(2)}%`, d.regime],

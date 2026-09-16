@@ -46,6 +46,17 @@ def compute_mas(closes: list[float], ma_type: str, fast_len: int, slow_len: int)
     return fn(closes, fast_len), fn(closes, slow_len)
 
 
+def trend_direction(current: Optional[float], previous: Optional[float]) -> Optional[str]:
+    """'up'/'down'/'flat' comparando el mismo valor en dos momentos distintos."""
+    if current is None or previous is None:
+        return None
+    if current > previous:
+        return "up"
+    if current < previous:
+        return "down"
+    return "flat"
+
+
 def find_crosses(fast: list[Optional[float]], slow: list[Optional[float]],
                  slow_len: int) -> list[dict]:
     """Cambio de signo de fast-slow entre barras consecutivas, ignorando MAs nulas."""
@@ -103,6 +114,7 @@ def analyze(ticker: str, bars: list[Bar], ma_type: str,
         ma_slow=slow[n],
         regime=regime,
         cross_date=cross_date,
+        history_start=datetime.fromtimestamp(bars[0].t, tz=timezone.utc).strftime("%Y-%m-%d"),
         sessions_since_cross=(n - last["idx"]) if last else None,
         fresh_cross=bool(last and last["idx"] == n),
         gap_pct=gap_pct,

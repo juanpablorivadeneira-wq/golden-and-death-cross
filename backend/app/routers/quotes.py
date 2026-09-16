@@ -51,16 +51,30 @@ def scan_now():
 
 
 @router.get("/radar200")
-def radar_200(ma_type: str = "sma", refresh: bool = False):
+def radar_200(ma_type: str = "sma", refresh: bool = False, ticker: str | None = None):
     from concurrent.futures import ThreadPoolExecutor
     from .. import radar200
     if ma_type not in ("sma", "ema"):
         raise HTTPException(status_code=422, detail="Media inválida")
-    def analyze_ticker(row):
+
+    def analyze_one(t: str) -> dict:
         try:
-            return radar200.analyze(row["ticker"], market.get_bars(row["ticker"], force=refresh), ma_type)
+            return radar200.analyze(t, market.get_bars(t, force=refresh), ma_type)
         except market.MarketError as exc:
-            return {"ticker": row["ticker"], "error": str(exc)}
+            return {"ticker": t, "error": str(exc)}
+
+    if ticker:
+        item = analyze_one(ticker.strip().upper())
+        return {"ma_type": ma_type, "period": 200,
+                "ma_trend_lookback": radar200.TREND_LOOKBACK, "item": item}
+
+    # Modo lista: sin bars/series (esos solo se piden para el ticker seleccionado,
+    # vía ?ticker=, evitando serializar 5 años de historia por cada fila de la lista).
+    def summary(row) -> dict:
+        result = analyze_one(row["ticker"])
+        return {k: v for k, v in result.items() if k not in ("bars", "series")}
+
     with ThreadPoolExecutor(max_workers=4) as pool:
-        results = list(pool.map(analyze_ticker, db.get_watchlist()))
-    return {"ma_type": ma_type, "period": 200, "items": results}
+        results = list(pool.map(summary, db.get_watchlist()))
+    return {"ma_type": ma_type, "period": 200,
+            "ma_trend_lookback": radar200.TREND_LOOKBACK, "items": results}

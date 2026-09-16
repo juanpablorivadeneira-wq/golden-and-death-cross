@@ -4,6 +4,7 @@ En cada pasada se calcula el régimen actual de cada ticker y se compara con
 el guardado en la base; si cambió, se persiste y se envía push.
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -38,33 +39,38 @@ def scan_watchlist() -> dict:
         return {"skipped": True}
 
     ma_type, fast_len, slow_len = db.get_engine_settings()
-    summary = {"scanned": 0, "errors": 0, "crosses": 0}
 
-    for row in db.get_watchlist():
+    def scan_one(row: dict) -> dict:
         ticker = row["ticker"]
         try:
             bars = market.closed_bars(market.get_bars(ticker, force=True))
             metrics = engine.analyze(ticker, bars, ma_type, fast_len, slow_len)
             if metrics.error:
-                summary["errors"] += 1
                 logger.warning("%s: %s", ticker, metrics.error)
-                continue
-            summary["scanned"] += 1
+                return {"scanned": 0, "errors": 1, "crosses": 0}
 
             prev_regime = row["current_regime"]
             previous_date = row["last_cross_date"]
             new_cross = (metrics.cross_date and prev_regime and
                          ((previous_date and metrics.cross_date > previous_date) or
                           (not previous_date and prev_regime != metrics.regime)))
-            if new_cross and db.save_alert(metrics, ma_type, fast_len, slow_len):
-                summary["crosses"] += 1
+            crossed = bool(new_cross and db.save_alert(metrics, ma_type, fast_len, slow_len))
             db.update_regime(ticker, metrics.regime, metrics.cross_date)
+            return {"scanned": 1, "errors": 0, "crosses": int(crossed)}
         except market.MarketError as exc:
-            summary["errors"] += 1
             logger.warning("%s: error de datos: %s", ticker, exc)
+            return {"scanned": 0, "errors": 1, "crosses": 0}
         except Exception:  # noqa: BLE001 — el escaneo nunca debe morir
-            summary["errors"] += 1
             logger.exception("%s: error inesperado en el escaneo", ticker)
+            return {"scanned": 0, "errors": 1, "crosses": 0}
+
+    # Fetches en paralelo: cada ticker ahora trae ~5 años de historia, y hacerlo
+    # secuencial haría crecer la duración del escaneo con cada ticker agregado.
+    summary = {"scanned": 0, "errors": 0, "crosses": 0}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for partial in pool.map(scan_one, db.get_watchlist()):
+            for key in summary:
+                summary[key] += partial[key]
 
     push.deliver_alerts()
     _last_scan = datetime.now(timezone.utc).isoformat()

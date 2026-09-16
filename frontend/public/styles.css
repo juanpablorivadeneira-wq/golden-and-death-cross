@@ -93,7 +93,9 @@
 .distance-name { display:flex; align-items:baseline; gap:6px; }
 .ma-trend { font-size:12px; font-weight:700; }
 .ma-trend:not(.golden):not(.death) { color:var(--muted); }
-.maturity-tag { display:block; margin-top:2px; font-size:9px; font-weight:400; color:var(--muted); }
+.selected-metrics > div { min-width:0; }
+.selected-metrics strong { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.maturity-tag { display:block; margin-top:2px; font-size:9px; font-weight:400; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
 
 /* Resumen compacto compartido: el gráfico es el protagonista. */
 .workspace { padding-top: 16px; }

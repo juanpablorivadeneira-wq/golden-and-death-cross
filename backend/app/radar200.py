@@ -6,17 +6,18 @@ TREND_LOOKBACK = 10  # sesiones hacia atrás para juzgar si la media sube o baja
 
 
 def _ma_trend(series: list, lookback: int = TREND_LOOKBACK) -> str | None:
-    """'up'/'down'/'flat' comparando la media actual contra hace `lookback` sesiones."""
+    """'up'/'down'/'flat' comparando la media actual contra hace `lookback` sesiones.
+
+    El único llamador (analyze) ya exige len(bars) >= 200 > lookback, así que esta
+    guarda no se activa hoy; se mantiene porque `series[-1 - lookback]` sería un
+    IndexError con una serie más corta que lookback+1 si esta función se reutiliza.
+    """
     if len(series) <= lookback:
         return None
     current, prev = series[-1], series[-1 - lookback]
-    if current is None or prev is None or prev <= 0:
+    if prev is not None and prev <= 0:
         return None
-    if current > prev:
-        return "up"
-    if current < prev:
-        return "down"
-    return "flat"
+    return engine.trend_direction(current, prev)
 
 
 def analyze(ticker, bars, ma_type="sma"):

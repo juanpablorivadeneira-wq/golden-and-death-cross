@@ -1,5 +1,5 @@
 "use strict";
-const radar = { items: [], selected: null, filter: "all", range: 252, token: "", chart: null, candles: null, average: null, type: "sma" };
+const radar = { items: [], detail: {}, selected: null, filter: "all", range: 252, token: "", chart: null, candles: null, average: null, type: "sma", trendLookback: 10 };
 const $ = id => document.getElementById(id);
 const threshold = () => Number($("threshold").value);
 const valid = d => !d.error;
@@ -8,6 +8,7 @@ const signed = n => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 const trendIcon = t => t === "up" ? "↑" : t === "down" ? "↓" : t === "flat" ? "→" : "";
 const trendClass = t => t === "up" ? "golden" : t === "down" ? "death" : "";
 const trendLabel = t => t === "up" ? "Subiendo" : t === "down" ? "Bajando" : t === "flat" ? "Plana" : "Sin datos suficientes";
+const trendTooltip = t => t ? `MA 200 ${trendLabel(t).toLowerCase()} en las últimas ${radar.trendLookback} sesiones` : "";
 async function savedToken() {
   return new Promise(resolve => {
     const req = indexedDB.open("cross-monitor", 1);
@@ -30,13 +31,15 @@ async function load(force = false) {
     if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a este radar.");
     if (!res.ok) throw new Error(`No se pudo obtener la lista (${res.status}).`);
     const data = await res.json(); radar.items = data.items; radar.type = data.ma_type;
+    radar.trendLookback = data.ma_trend_lookback || radar.trendLookback;
+    if (force) radar.detail = {}; // refresco: descarta detalle cacheado, se vuelve a pedir al dibujar
     const good = radar.items.filter(valid);
     if (!good.some(d => d.ticker === radar.selected)) radar.selected = good[0]?.ticker || null;
     $("radar-status").textContent = `${good.length} activos disponibles · ${radar.items.length-good.length} con error`;
     $("consulted").textContent = `Consulta: ${new Date().toLocaleTimeString()}`;
     $("ma-label").textContent = `${radar.type.toUpperCase()} 200 · Diario`;
     $("legend-label").textContent = `${radar.type.toUpperCase()} 200`;
-    render(); draw();
+    render(); await draw();
   } catch(e) {
     $("average-type").value = radar.type;
     $("radar-status").textContent = `${e.message} Los datos anteriores, si existen, no se han actualizado.`;
@@ -63,7 +66,7 @@ function render() {
     const name = document.createElement("strong"); name.textContent = d.ticker; nameGroup.append(name);
     if (!d.error && d.ma_trend) {
       const trend = document.createElement("span"); trend.className = `ma-trend ${trendClass(d.ma_trend)}`;
-      trend.title = `MA 200 ${trendLabel(d.ma_trend).toLowerCase()} en las últimas ${10} sesiones`;
+      trend.title = trendTooltip(d.ma_trend);
       trend.textContent = trendIcon(d.ma_trend); nameGroup.append(trend);
     }
     top.append(nameGroup);
@@ -77,25 +80,39 @@ function render() {
   }
 }
 function setRange() {
-  const d = radar.items.find(d=>d.ticker===radar.selected && valid(d)); if(!d || !radar.chart) return;
+  const detail = radar.detail[radar.selected]; if(!detail || !radar.chart) return;
   if (!radar.range) radar.chart.timeScale().fitContent();
-  else radar.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,d.bars.length-radar.range),to:d.bars.length+3});
+  else radar.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,detail.bars.length-radar.range),to:detail.bars.length+3});
 }
-function draw() {
+async function loadDetail(ticker) {
+  if (radar.detail[ticker]) return radar.detail[ticker];
+  const res = await fetch(`/api/radar200?ma_type=${radar.type}&ticker=${encodeURIComponent(ticker)}`, {headers: {"X-Auth-Token": radar.token}, signal: AbortSignal.timeout(60000)});
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data.item.error) throw new Error(data.item.error);
+  radar.detail[ticker] = data.item;
+  return data.item;
+}
+async function draw() {
   radar.hideCursor?.();
   const d = radar.items.find(d=>d.ticker===radar.selected && valid(d));
   const metrics = $("selected-metrics"); metrics.replaceChildren();
   radar.candles?.setData([]); radar.average?.setData([]);
   if(!d) {$("chart-title").textContent="Sin activo seleccionado";$("chart-caption").textContent="No hay datos para dibujar.";return;}
-  const title = document.createElement("strong");title.textContent=d.ticker;$("chart-title").replaceChildren(title);
+  const chartTitle = document.createElement("strong");chartTitle.textContent=d.ticker;$("chart-title").replaceChildren(chartTitle);
+  const maLabel = `${radar.type.toUpperCase()} 200`;
   const maValue = `${d.average.toFixed(2)}${d.ma_trend ? " " + trendIcon(d.ma_trend) : ""}`;
-  for(const [label,value,cls,title] of [["Último precio",d.price.toFixed(2),"",""],
-      [`${radar.type.toUpperCase()} 200`,maValue,trendClass(d.ma_trend),d.ma_trend?`Media 200 ${trendLabel(d.ma_trend).toLowerCase()} en las últimas 10 sesiones`:""],
-      ["Distancia",signed(d.distance_pct),"",""]]) {
+  for(const [label,value] of [["Último precio",d.price.toFixed(2)],[maLabel,maValue],["Distancia",signed(d.distance_pct)]]) {
     const div=document.createElement("div"),l=document.createElement("span"),v=document.createElement("strong");
-    l.textContent=label;v.textContent=value;v.className=cls;if(title)v.title=title;div.append(l,v);metrics.append(div);
+    l.textContent=label;v.textContent=value;div.append(l,v);metrics.append(div);
+    if (label === maLabel && d.ma_trend) { v.className = trendClass(d.ma_trend); v.title = trendTooltip(d.ma_trend); }
   }
-  if(radar.chart){radar.candles.setData(d.bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));radar.average.applyOptions({title:`${radar.type.toUpperCase()} 200`});radar.average.setData(d.bars.flatMap((b,i)=>d.series[i]===null?[]:[{time:b.t,value:d.series[i]}]));setRange();}
+  $("chart-caption").textContent = "Cargando gráfico…";
+  let detail;
+  try { detail = await loadDetail(d.ticker); }
+  catch(e) { if (radar.selected === d.ticker) $("chart-caption").textContent = `No se pudo cargar el gráfico de ${d.ticker}: ${e.message}`; return; }
+  if (radar.selected !== d.ticker) return; // el usuario cambió de selección mientras cargaba
+  if(radar.chart){radar.candles.setData(detail.bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));radar.average.applyOptions({title:maLabel});radar.average.setData(detail.bars.flatMap((b,i)=>detail.series[i]===null?[]:[{time:b.t,value:detail.series[i]}]));setRange();}
   $("chart-caption").textContent=`Última barra: ${d.bar_date} · ${near(d)?"Dentro":"Fuera"} del umbral ±${threshold()}%. La sesión en curso puede variar.`;
 }
 $("update").onclick=()=>load(true);$("average-type").onchange=()=>load();

@@ -7,3 +7,8 @@ data/
 node_modules/
 
 .venv/
+.venv314/
+
+# Build del .exe portátil (PyInstaller) — el binario final se distribuye, no se commitea.
+build/
+dist/

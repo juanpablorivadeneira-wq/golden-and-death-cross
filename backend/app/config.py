@@ -3,6 +3,11 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Token de conveniencia para los lanzadores locales de un solo usuario
+# (scripts/run_local.py, desktop/app_entry.py) cuando no hay .env. Vive aquí
+# para que ambos lo importen en vez de tener cada uno su propia copia.
+DEV_AUTH_TOKEN = "dev-token"
+
 
 class Settings(BaseSettings):
     # Token compartido: el frontend lo envía en el header X-Auth-Token

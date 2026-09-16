@@ -27,6 +27,9 @@ FRONTEND_PORT = 8080
 FRONTEND_DIR = os.path.join(ROOT, "frontend", "public")
 BACKEND_URL = f"http://127.0.0.1:{BACKEND_PORT}"
 
+sys.path.insert(0, os.path.join(ROOT, "backend"))
+from app.config import DEV_AUTH_TOKEN  # noqa: E402 — requiere el sys.path.insert previo
+
 
 def load_dotenv() -> None:
     env_path = os.path.join(ROOT, ".env")
@@ -42,7 +45,6 @@ def load_dotenv() -> None:
 
 
 def start_backend() -> None:
-    sys.path.insert(0, os.path.join(ROOT, "backend"))
     os.environ.setdefault("DB_PATH", os.path.join(ROOT, "data", "monitor.db"))
     os.makedirs(os.path.dirname(os.environ["DB_PATH"]), exist_ok=True)
     import uvicorn
@@ -58,7 +60,7 @@ class Handler(SimpleHTTPRequestHandler):
         if "Content-Length" in self.headers:
             body = self.rfile.read(int(self.headers["Content-Length"]))
         req = urllib.request.Request(BACKEND_URL + self.path, data=body, method=self.command)
-        req.add_header("X-Auth-Token", os.environ.get("AUTH_TOKEN", "dev-token"))
+        req.add_header("X-Auth-Token", os.environ.get("AUTH_TOKEN", DEV_AUTH_TOKEN))
         for h in ("Content-Type",):
             if h in self.headers:
                 req.add_header(h, self.headers[h])
@@ -98,7 +100,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     load_dotenv()
-    os.environ.setdefault("AUTH_TOKEN", "dev-token")
+    os.environ.setdefault("AUTH_TOKEN", DEV_AUTH_TOKEN)
     print("Acceso local automático habilitado")
 
     threading.Thread(target=start_backend, daemon=True).start()

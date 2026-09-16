@@ -22,6 +22,7 @@ class TickerMetrics(BaseModel):
     ma_slow: Optional[float] = None
     regime: Optional[str] = None            # "golden" | "death"
     cross_date: Optional[str] = None        # ISO yyyy-mm-dd del último cruce
+    history_start: Optional[str] = None     # ISO yyyy-mm-dd de la barra más antigua disponible
     sessions_since_cross: Optional[int] = None
     fresh_cross: bool = False               # el cruce ocurrió en la última barra
     gap_pct: Optional[float] = None         # (fast-slow)/slow*100
