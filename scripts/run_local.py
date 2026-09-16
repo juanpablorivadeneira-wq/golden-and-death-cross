@@ -58,11 +58,12 @@ class Handler(SimpleHTTPRequestHandler):
         if "Content-Length" in self.headers:
             body = self.rfile.read(int(self.headers["Content-Length"]))
         req = urllib.request.Request(BACKEND_URL + self.path, data=body, method=self.command)
-        for h in ("X-Auth-Token", "Content-Type"):
+        req.add_header("X-Auth-Token", os.environ.get("AUTH_TOKEN", "dev-token"))
+        for h in ("Content-Type",):
             if h in self.headers:
                 req.add_header(h, self.headers[h])
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 self.send_response(resp.status)
                 for k, v in resp.getheaders():
                     if k.lower() not in ("transfer-encoding", "connection"):
@@ -74,7 +75,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(e.read())
-        except urllib.error.URLError:
+        except (urllib.error.URLError, TimeoutError):
             self.send_response(502)
             self.end_headers()
             self.wfile.write(b'{"detail":"Backend no disponible"}')
@@ -98,7 +99,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main() -> None:
     load_dotenv()
     os.environ.setdefault("AUTH_TOKEN", "dev-token")
-    print(f"AUTH_TOKEN: {os.environ['AUTH_TOKEN']}")
+    print("Acceso local automático habilitado")
 
     threading.Thread(target=start_backend, daemon=True).start()
 
@@ -107,7 +108,7 @@ def main() -> None:
     print("Ctrl+C para detener.")
     threading.Timer(1.5, lambda: webbrowser.open(url)).start()
 
-    server = ThreadingHTTPServer(("0.0.0.0", FRONTEND_PORT), Handler)
+    server = ThreadingHTTPServer(("127.0.0.1", FRONTEND_PORT), Handler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

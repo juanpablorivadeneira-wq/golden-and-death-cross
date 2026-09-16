@@ -58,3 +58,31 @@ def notify_cross(ticker: str, regime: str, ma_fast: float, ma_slow: float,
     body = (f"{ma_type.upper()}{fast_len} ({ma_fast:.2f}) cruzó {direction} de "
             f"{ma_type.upper()}{slow_len} ({ma_slow:.2f}). Precio: {price:.2f}")
     return send_to_all(title, body)
+
+
+def deliver_alerts():
+    """Reintentar por dispositivo sin repetir entregas ya confirmadas."""
+    if not push_configured():
+        return
+    settings = get_settings()
+    for alert in reversed(db.get_alerts()):
+        for sub in db.get_subscriptions():
+            # No enviar histórico anterior al alta de este dispositivo.
+            if sub["created_at"] > alert["created_at"] or db.alert_delivered(alert["id"], sub["endpoint"]):
+                continue
+            title = f"{alert['regime'].upper()} CROSS · {alert['ticker']}"
+            body = f"Sesión {alert['cross_date']} · {alert['ma_type'].upper()} {alert['fast_len']}/{alert['slow_len']} · Cierre {alert['price']:.2f}"
+            try:
+                webpush(subscription_info={"endpoint": sub["endpoint"], "keys": json.loads(sub["keys_json"])},
+                        data=json.dumps({"title": title, "body": body, "tag": f"cross-{alert['id']}"}),
+                        vapid_private_key=settings.vapid_private_key,
+                        vapid_claims={"sub": f"mailto:{settings.vapid_claim_email}"}, timeout=10)
+                db.mark_delivered(alert["id"], sub["endpoint"])
+            except WebPushException as exc:
+                status = exc.response.status_code if exc.response is not None else None
+                if status in (404, 410):
+                    db.delete_subscription(sub["endpoint"])
+                else:
+                    logger.warning("Entrega pendiente de alerta %s", alert["id"])
+            except Exception:
+                logger.exception("Entrega pendiente de alerta %s", alert["id"])

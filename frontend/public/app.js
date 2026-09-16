@@ -45,8 +45,10 @@ const state = {
   slowLen: 200,
   tickers: [],        // [{ticker, price, regime, ...}] tal como llega de la API
   selected: null,
-  pollSeconds: 300,
-  timer: null,
+  refreshing: false,
+  filter: "all",
+  chartRange: 252,
+
   chart: null, priceSeries: null, fastSeries: null, slowSeries: null,
 };
 
@@ -91,7 +93,7 @@ async function tryLogin(token) {
     document.getElementById("auth-overlay").classList.add("hidden");
     await loadSettings();
     await refreshAll();
-    restartTimer();
+
     return true;
   } catch (e) {
     state.token = null;
@@ -114,10 +116,17 @@ function logAlert(text, type) {
 //  ACTUALIZACIÓN
 // ═══════════════════════════════════════════════════════
 async function refreshAll() {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  document.getElementById("refresh-btn").disabled = true;
   const statusEl = document.getElementById("status-text");
   statusEl.textContent = "Consultando watchlist…";
   try {
+    const scan = await api("/scan", { method: "POST" });
+    if (scan.errors) logAlert(`${scan.errors} activo(s) no pudieron revisarse. Consulta el estado de cada tarjeta.`);
     const data = await api("/watchlist");
+    const sameSettings = state.maType === data.ma_type && state.fastLen === data.fast_len && state.slowLen === data.slow_len;
+    Object.keys(ohlcCache).forEach(k => delete ohlcCache[k]);
     state.maType = data.ma_type;
     state.fastLen = data.fast_len;
     state.slowLen = data.slow_len;
@@ -126,11 +135,12 @@ async function refreshAll() {
     // Detección de cambio de régimen respecto a lo que la UI ya mostraba
     for (const t of data.tickers) {
       const prev = state.tickers.find(x => x.ticker === t.ticker);
-      if (prev && !prev.error && !t.error && prev.regime !== t.regime) {
-        logAlert(`${new Date().toLocaleTimeString()} · ${t.regime === "golden" ? "GOLDEN" : "DEATH"} CROSS — ${t.ticker}`, t.regime);
+      if (sameSettings && prev && !prev.error && !t.error && prev.regime !== t.regime) {
+        logAlert(`${t.ticker}: cambio en la posición de las medias. Revisa el historial para señales confirmadas.`, t.regime);
       }
     }
     state.tickers = data.tickers;
+    await loadAlertHistory();
 
     const ok = data.tickers.filter(t => !t.error).length;
     const fail = data.tickers.length - ok;
@@ -148,6 +158,9 @@ async function refreshAll() {
     }
   } catch (e) {
     statusEl.textContent = `Error: ${e.message}`;
+  } finally {
+    state.refreshing = false;
+    document.getElementById("refresh-btn").disabled = false;
   }
 }
 
@@ -157,6 +170,7 @@ async function refreshAll() {
 const expanded = new Set();
 
 function renderWatchlist() {
+  updateSummary();
   const el = document.getElementById("watchlist");
   el.innerHTML = "";
   if (state.tickers.length === 0) {
@@ -164,7 +178,9 @@ function renderWatchlist() {
     return;
   }
   const maLabel = state.maType.toUpperCase();
-  for (const d of state.tickers) {
+  const visible = state.tickers.filter(d => state.filter === "all" || (state.filter === "near" ? isNear(d) : !d.error && d.regime === state.filter));
+  if (!visible.length) el.innerHTML = '<div class="empty">No hay activos en este filtro.<br>Prueba con Todos.</div>';
+  for (const d of visible) {
     const t = d.ticker;
     const card = document.createElement("div");
     card.className = "card"
@@ -175,7 +191,7 @@ function renderWatchlist() {
     if (d.error) {
       card.innerHTML = `<div class="card-row">
           <span class="ticker">${t}</span>
-          <span class="gap-mini death" style="margin-left:auto;">${d.error}</span>
+          <span class="gap-mini death" style="margin-left:auto;"></span>
           <button class="retry" data-t="${t}">Reintentar</button>
           <button class="remove" title="Quitar" data-t="${t}">×</button>
         </div>`;
@@ -193,7 +209,7 @@ function renderWatchlist() {
         <div class="card-row">
           <button class="chev" title="Ver detalle" data-t="${t}">▶</button>
           <span class="ticker">${t}</span>
-          <span class="badge ${badgeClass}${d.fresh_cross ? " fresh" : ""}">${label}${d.fresh_cross ? " · HOY" : ""}</span>
+          <span class="badge ${badgeClass}${d.fresh_cross ? " fresh" : ""}">${label}${d.fresh_cross ? " · ÚLTIMA SESIÓN" : ""}</span>
           <span class="sess-mini" title="Sesiones desde el último cruce">${d.sessions_since_cross != null ? "hace " + d.sessions_since_cross + " ses" : "—"}</span>
           <span class="gap-mini ${badgeClass}" title="Brecha entre medias">${d.gap_pct >= 0 ? "+" : ""}${d.gap_pct.toFixed(2)}%</span>
           <span class="price">${d.price.toFixed(2)}</span>
@@ -222,6 +238,7 @@ function renderWatchlist() {
       }
       if (!d.error) selectTicker(t);
     });
+    if (d.error) card.querySelector(".gap-mini").textContent = d.error;
     const rm = card.querySelector(".remove");
     if (rm) rm.addEventListener("click", (ev) => { ev.stopPropagation(); removeTicker(t); });
     const rt = card.querySelector(".retry");
@@ -262,6 +279,12 @@ async function removeTicker(t) {
     state.tickers = state.tickers.filter(x => x.ticker !== t);
     if (state.selected === t) state.selected = null;
     renderWatchlist();
+    if (!state.selected) {
+      clearSeries();
+      document.getElementById("chart-title").textContent = "Selecciona un ticker";
+      const next = state.tickers.find(x => !x.error);
+      if (next) selectTicker(next.ticker);
+    }
   } catch (e) {
     logAlert(`No se pudo eliminar ${t}: ${e.message}`);
   }
@@ -304,6 +327,8 @@ async function renderChart(t) {
       ohlcCache[t] = data;
       setTimeout(() => delete ohlcCache[t], 5 * 60 * 1000); // TTL alineado con el backend
     } catch (e) {
+      clearSeries();
+      document.getElementById("chart-caption").textContent = `No se pudo cargar ${t}: ${e.message}`;
       logAlert(`No se pudo cargar el gráfico de ${t}: ${e.message}`);
       return;
     }
@@ -336,7 +361,8 @@ async function renderChart(t) {
     shape: c.type === "golden" ? "arrowUp" : "arrowDown",
     text: c.type === "golden" ? "GOLDEN" : "DEATH",
   })));
-  state.chart.timeScale().fitContent();
+  applyChartRange(data.bars.length);
+  updateSelectedMetrics();
 }
 
 function selectTicker(t) {
@@ -379,6 +405,16 @@ async function enablePush() {
     return;
   }
   try {
+    const health = await api("/health");
+    if (!health.scan_daily && health.scan_interval_min <= 0) {
+      logAlert("Modo manual: las alertas automáticas están desactivadas en el servidor.");
+      return;
+    }
+    const config = await api("/alerts");
+    if (!config.push_configured) {
+      logAlert("Falta configurar las claves de notificaciones en el servidor. Las alertas sí se guardan en el historial.");
+      return;
+    }
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
       logAlert("Permiso de notificaciones denegado.");
@@ -408,10 +444,71 @@ async function enablePush() {
 // ═══════════════════════════════════════════════════════
 //  EVENTOS DE UI
 // ═══════════════════════════════════════════════════════
-function restartTimer() {
-  if (state.timer) clearInterval(state.timer);
-  state.timer = setInterval(refreshAll, state.pollSeconds * 1000);
+function isNear(d) {
+  return !d.error && d.converging && Math.abs(d.gap_pct) <= 1;
 }
+
+function updateSummary() {
+  document.getElementById("count-all").textContent = state.tickers.length;
+  document.getElementById("count-golden").textContent = state.tickers.filter(d => !d.error && d.regime === "golden").length;
+  document.getElementById("count-death").textContent = state.tickers.filter(d => !d.error && d.regime === "death").length;
+  document.getElementById("count-near").textContent = state.tickers.filter(isNear).length;
+}
+
+function updateSelectedMetrics() {
+  const d = state.tickers.find(t => t.ticker === state.selected);
+  const el = document.getElementById("selected-metrics");
+  el.replaceChildren();
+  if (!d || d.error) return;
+  for (const [label, value, color] of [["Último precio", d.price.toFixed(2), ""],
+      ["Brecha entre medias", `${d.gap_pct.toFixed(2)}%`, d.regime],
+      ["Último cruce", d.cross_date || "Fuera del historial", ""]]) {
+    const item = document.createElement("div");
+    const title = document.createElement("span"); title.textContent = label;
+    const valueEl = document.createElement("strong"); valueEl.textContent = value; valueEl.className = color;
+    item.append(title, valueEl); el.append(item);
+  }
+  document.getElementById("chart-caption").textContent = `Última barra: ${d.bar_date || "—"} · La sesión en curso puede variar. Alertas confirmadas a partir de las 17:00 de Nueva York.`;
+}
+
+function applyChartRange(count) {
+  if (!state.chart) return;
+  if (!state.chartRange) state.chart.timeScale().fitContent();
+  else state.chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, count - state.chartRange), to: count + 3 });
+}
+
+async function loadAlertHistory() {
+  const [data, health] = await Promise.all([api("/alerts"), api("/health")]);
+  document.getElementById("schedule-note").textContent = health.scan_daily ? "Revisión diaria · 17:00 Nueva York" : (health.scan_interval_min ? `Revisión cada ${health.scan_interval_min} minutos` : "Revisión manual");
+  const list = document.getElementById("alert-history"); list.replaceChildren();
+  if (!data.items.length) {
+    const empty = document.createElement("div"); empty.className = "empty";
+    empty.textContent = "Todavía no hay cruces nuevos registrados. La primera revisión establece la referencia; las siguientes guardan nuevas señales de sesiones cerradas.";
+    list.append(empty);
+  }
+  for (const a of data.items) {
+    const row = document.createElement("div"); row.className = "history-row";
+    const ticker = document.createElement("strong"); ticker.textContent = a.ticker;
+    const label = document.createElement("b"); label.className = a.regime; label.textContent = `${a.regime === "golden" ? "↗ Golden" : "↘ Death"} cross`;
+    const detail = document.createElement("span"); detail.textContent = `${a.cross_date} · ${a.ma_type.toUpperCase()} ${a.fast_len}/${a.slow_len} · ${a.price.toFixed(2)}`;
+    row.append(ticker, label, detail); list.append(row);
+  }
+  document.getElementById("push-status").textContent = data.push_configured
+    ? `${data.subscriptions} dispositivo(s) registrado(s). Activa las notificaciones en este navegador para recibir nuevos cruces.`
+    : "Historial activo. Para recibir avisos fuera de la página falta configurar Web Push en el servidor.";
+}
+
+document.querySelectorAll("[data-filter]").forEach(button => button.addEventListener("click", () => {
+  state.filter = button.dataset.filter;
+  document.querySelectorAll("[data-filter]").forEach(b => b.classList.toggle("active", b === button));
+  renderWatchlist();
+}));
+document.querySelectorAll("[data-range]").forEach(button => button.addEventListener("click", () => {
+  state.chartRange = Number(button.dataset.range);
+  document.querySelectorAll("[data-range]").forEach(b => b.classList.toggle("active", b === button));
+  const data = ohlcCache[state.selected];
+  if (data) applyChartRange(data.bars.length);
+}));
 
 document.getElementById("add-btn").addEventListener("click", addTicker);
 document.getElementById("edit-btn").addEventListener("click", toggleEditMode);
@@ -425,10 +522,6 @@ document.getElementById("ma-type").addEventListener("change", async e => {
   } catch (err) {
     logAlert(`No se pudo cambiar el tipo de MA: ${err.message}`);
   }
-});
-document.getElementById("poll-interval").addEventListener("change", e => {
-  state.pollSeconds = parseInt(e.target.value, 10);
-  restartTimer();
 });
 document.getElementById("notif-btn").addEventListener("click", enablePush);
 document.getElementById("auth-btn").addEventListener("click", async () => {
@@ -452,6 +545,16 @@ async function main() {
     navigator.serviceWorker.register("sw.js").catch(e => logAlert(`Service worker: ${e.message}`));
   }
   initChart();
+  try {
+    const response = await fetch("/api/settings");
+    if (response.ok) {
+      await loadSettings();
+      await refreshAll();
+      return;
+    }
+  } catch (e) {
+    logAlert("No se pudo conectar al servidor. Vuelve a cargar la página.");
+  }
   const saved = await idbGet("token").catch(() => null);
   if (saved && await tryLogin(saved)) return;
   showAuth();

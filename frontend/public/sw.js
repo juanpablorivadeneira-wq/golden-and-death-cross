@@ -1,13 +1,15 @@
 // Service worker de Cross Monitor:
-// - caché de estáticos (cache-first con actualización en segundo plano)
-// - network-first para /api (nunca servir datos de mercado viejos si hay red)
+// - estáticos actualizados al abrir, con respaldo sin conexión
+// - API solo por red
 // - notificaciones push del servidor
 "use strict";
 
-const CACHE = "cross-monitor-v1";
+const CACHE = "cross-monitor-v5";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
+  "/radar200.html",
+  "/radar200.js",
   "/styles.css",
   "/app.js",
   "/manifest.json",
@@ -36,35 +38,24 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET") return;
 
-  // API: network-first, con respaldo de caché si no hay red
+  // Los datos autenticados siempre requieren conexión; no guardar respuestas antiguas.
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(
-      fetch(event.request)
-        .then(res => {
-          const copy = res.clone();
-          caches.open(CACHE).then(cache => cache.put(event.request, copy));
-          return res;
-        })
-        .catch(() => caches.match(event.request))
-    );
+    event.respondWith(fetch(event.request));
     return;
   }
 
-  // Estáticos: cache-first con revalidación en segundo plano
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      const fresh = fetch(event.request)
-        .then(res => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then(cache => cache.put(event.request, copy));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || fresh;
-    })
-  );
+  // Obtener la versión vigente al abrir; no revalidar en segundo plano.
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      const response = await fetch(event.request, { cache: "no-cache" });
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
+    } catch (error) {
+      const cached = await cache.match(event.request);
+      return cached || new Response("Sin conexión. Vuelve a cargar cuando haya red.", { status: 503 });
+    }
+  })());
 });
 
 self.addEventListener("push", (event) => {
@@ -75,7 +66,7 @@ self.addEventListener("push", (event) => {
       body: data.body,
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
-      tag: "cross-monitor",
+      tag: data.tag || "cross-monitor-test",
       vibrate: [200, 100, 200],
     })
   );

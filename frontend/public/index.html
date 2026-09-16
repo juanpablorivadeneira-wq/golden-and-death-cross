@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=radar-10">
 </head>
 <body>
 
@@ -25,57 +25,38 @@
   </div>
 </div>
 
-<header>
-  <h1>CROSS<span class="x">×</span>MONITOR <span id="ma-subtitle" style="color:var(--muted); font-weight:400; font-size:12px;">EMA 50 / 200 · Diario</span></h1>
-  <div class="controls">
-    <input type="text" id="ticker-input" placeholder="Ticker" maxlength="8">
-    <button id="add-btn">Agregar</button>
-    <button id="edit-btn">Editar lista</button>
-    <label>MA
-      <select id="ma-type">
-        <option value="ema" selected>EMA</option>
-        <option value="sma">SMA</option>
-      </select>
-    </label>
-    <label>Actualizar
-      <select id="poll-interval">
-        <option value="60">1 min</option>
-        <option value="300" selected>5 min</option>
-        <option value="900">15 min</option>
-      </select>
-    </label>
-    <button id="notif-btn">Activar notificaciones</button>
-    <button id="refresh-btn" class="primary">Actualizar ahora</button>
-  </div>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="Cross Monitor inicio"><span class="brand-icon">↗</span><span>CROSS<span class="brand-light">MONITOR</span><small>OBSERVATORIO DE TENDENCIAS</small></span></a>
+  <nav aria-label="Herramientas"><a class="nav-active" href="/" aria-current="page">Cross Monitor</a><a href="/radar200.html">Radar MA 200</a><a href="#history-panel">Alertas</a></nav>
+  <span class="source-pill"><i></i> Yahoo Finance · Diario</span>
 </header>
-
-<div class="status-bar">
-  <span id="status-text">Cargando datos…</span>
-  <span>Última actualización: <span class="live" id="last-update">—</span></span>
-</div>
-
+<div class="workspace">
+<section class="page-intro"><div><h1>Golden &amp; Death Cross</h1></div><div class="intro-actions"><div class="schedule-note" id="schedule-note">Revisión diaria · 17:00 Nueva York</div><button id="refresh-btn" class="primary">↻ Actualizar y revisar</button></div></section>
+<section class="overview" aria-label="Resumen de señales">
+  <article><span>EN SEGUIMIENTO</span><strong id="count-all">—</strong><small>Activos en tu lista</small></article>
+  <article class="gold-stat"><span>↗ GOLDEN</span><strong id="count-golden">—</strong><small>Media rápida sobre la lenta</small></article>
+  <article class="red-stat"><span>↘ DEATH</span><strong id="count-death">—</strong><small>Media rápida bajo la lenta</small></article>
+  <article><span>◎ EN CONVERGENCIA</span><strong id="count-near">—</strong><small>Brecha ≤ 1% y acercándose</small></article>
+</section>
+<div class="status-bar" role="status"><span id="status-text">Conectando con tus activos…</span><span>Consulta: <span id="last-update">—</span></span></div>
 <main>
-  <div class="watchlist" id="watchlist">
-    <div class="empty">Cargando watchlist…</div>
-  </div>
-  <div class="chart-panel">
-    <div class="chart-head">
-      <div id="chart-title">Selecciona un ticker</div>
-      <div class="legend" id="legend">
-        <span><span class="sw" style="background:var(--ema-fast)"></span><span id="legend-fast">EMA 50</span></span>
-        <span><span class="sw" style="background:var(--ema-slow)"></span><span id="legend-slow">EMA 200</span></span>
-        <span><span class="sw" style="background:var(--gold)"></span>Golden ▲</span>
-        <span><span class="sw" style="background:var(--death)"></span>Death ▼</span>
-      </div>
-    </div>
-    <div id="own-chart"></div>
-    <div class="alert-log" id="alert-log">
-      <div class="entry">— Registro de alertas de la sesión —</div>
-    </div>
-  </div>
+  <section class="watch-panel"><div class="panel-heading"><div><div class="eyebrow">RADAR</div><h2>Tu seguimiento</h2></div><button id="edit-btn" class="quiet">Editar lista</button></div>
+    <div class="add-row"><input id="ticker-input" type="text" placeholder="Símbolo, ej. NVDA" maxlength="10" aria-label="Símbolo para agregar"><button id="add-btn">+ Agregar</button></div>
+    <div class="filter-row" role="group" aria-label="Filtrar activos"><button class="active" data-filter="all">Todos</button><button data-filter="golden">Golden</button><button data-filter="death">Death</button><button data-filter="near">Cerca</button></div>
+    <div id="watchlist" class="watchlist"><div class="empty">Preparando tu radar…</div></div>
+    <div class="watch-foot">El régimen describe la posición de las medias, no una señal nueva.</div>
+  </section>
+  <section class="chart-panel"><div class="chart-head"><div><div class="eyebrow">EVOLUCIÓN DEL PRECIO</div><div id="chart-title">Selecciona un activo</div></div><label class="ma-control">Medias <select id="ma-type"><option value="ema">EMA</option><option value="sma">SMA</option></select><span id="ma-subtitle">50 / 200 · Diario</span></label></div>
+    <div id="selected-metrics" class="selected-metrics"></div>
+    <div class="chart-tools"><div class="legend"><span><i class="sw fast"></i><span id="legend-fast">EMA 50</span></span><span><i class="sw slow"></i><span id="legend-slow">EMA 200</span></span><span>▲ Golden · ▼ Death</span></div><div class="range-buttons"><button data-range="63">3M</button><button data-range="126">6M</button><button class="active" data-range="252">1A</button><button data-range="0">Todo</button></div></div>
+    <div id="own-chart"></div><div class="chart-caption" id="chart-caption">Las señales se confirman con sesiones cerradas. La sesión en curso puede cambiar.</div>
+  </section>
 </main>
-
+<section class="bottom-grid"><article class="history-panel" id="history-panel"><div class="panel-heading"><div><div class="eyebrow">SEÑALES CONFIRMADAS</div><h2>Historial de alertas</h2></div><span class="subtle">Guardado en este servidor</span></div><div id="alert-history" class="history-list"><div class="empty">Cargando historial…</div></div></article><article class="notification-panel"><div class="eyebrow">NO PIERDAS EL SIGUIENTE CRUCE</div><h2>Tu vigilancia diaria</h2><p id="push-status">Comprobando notificaciones…</p><button id="notif-btn">Activar notificaciones</button><p class="fine">El servidor debe permanecer encendido. La revisión diaria no consume tokens de IA.</p></article></section>
+<details class="activity"><summary>Actividad de esta sesión</summary><div class="alert-log" id="alert-log"><div class="entry">Registro de operaciones y conexión</div></div></details>
+<footer><span>CROSS MONITOR <b> / </b> Lectura técnica, con contexto.</span><span>La convergencia es una estimación, no una garantía de cruce.</span></footer>
+</div>
 <script src="vendor/lightweight-charts.standalone.production.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=radar-5"></script>
 </body>
 </html>

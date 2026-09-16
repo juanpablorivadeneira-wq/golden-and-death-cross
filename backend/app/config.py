@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     twelve_data_key: str = ""
 
     # Escaneo periódico
-    scan_interval_min: int = 15
+    scan_daily: bool = True
+    scan_interval_min: int = 0
     scan_market_hours_only: bool = False
 
     # Ruta de la base de datos (volumen Docker en producción)

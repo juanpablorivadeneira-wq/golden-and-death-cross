@@ -1,8 +1,26 @@
+# Cross Monitor — radar diario
+
+Panel de Golden/Death Cross con filtros, convergencia, gráfico por rangos e historial persistente de alertas. No integra servicios de IA ni consume tokens de IA.
+
+## Revisión y alertas
+
+- `SCAN_DAILY=true`: una revisión de lunes a viernes a las 17:00 de Nueva York (ajusta el horario de verano). El servidor debe estar encendido. No consulta continuamente.
+- El navegador consulta al abrir y al pulsar Actualizar y revisar; no tiene temporizador periódico.
+- Solo se usan sesiones anteriores o la sesión actual después de las 17:00 NY para las alertas. El gráfico puede incluir la sesión provisional. Esta política está orientada a acciones de Estados Unidos.
+- La primera revisión establece la referencia sin notificar cruces antiguos. Los cruces posteriores se guardan en SQLite y se deduplican por símbolo, sesión y parámetros. Cambiar las medias reinicia la referencia.
+- Para modo exclusivamente manual: `SCAN_DAILY=false` y `SCAN_INTERVAL_MIN=0`. Un intervalo positivo solo se aplica si el modo diario está desactivado.
+- Web Push requiere claves VAPID y registrar el dispositivo desde Activar notificaciones. El historial funciona sin estas claves. Los fallos de entrega se reintentan en la siguiente revisión para cada dispositivo; se conservan los últimos 100 eventos para envío y consulta.
+- Una interrupción del servidor puede retrasar alertas hasta la próxima revisión. No garantiza entrega exactamente una vez si el servidor se interrumpe entre enviar y registrar la entrega.
+
+## Desarrollo local
+
+Python 3.12, instalar `backend/requirements.txt` y ejecutar `scripts/run_local.py`. El acceso local es automático y limitado a este equipo. Docker conserva `AUTH_TOKEN`. `TWELVE_DATA_KEY` es opcional y no es una contraseña de acceso.
+
 # Cross Monitor — Golden / Death Cross PWA
 
 Monitor de cruces Golden/Death (EMA/SMA 50/200, timeframe diario) con:
 
-- Backend FastAPI que escanea la watchlist 24/7 y envía notificaciones
+- Backend FastAPI que escanea la watchlist una vez al día y envía notificaciones
   Web Push al detectar un cambio de régimen.
 - PWA instalable en iPhone (iOS 16.4+) con la UI del prototipo original:
   watchlist con tarjetas plegables, gráfico de velas con EMAs y marcadores

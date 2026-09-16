@@ -101,3 +101,43 @@ def test_push_subscribe(client):
 
 def test_push_test_sin_vapid(client):
     assert client.post("/api/push/test", headers=HEADERS).status_code == 503
+
+
+def test_settings_invalid_update_is_atomic(client):
+    before = client.get("/api/settings", headers=HEADERS).json()
+    response = client.put("/api/settings", headers=HEADERS,
+                          json={"ma_type": "sma", "fast_len": 1})
+    assert response.status_code == 422
+    assert client.get("/api/settings", headers=HEADERS).json() == before
+
+
+def test_settings_reject_inverted_periods(client):
+    assert client.put("/api/settings", headers=HEADERS,
+                      json={"fast_len": 200, "slow_len": 50}).status_code == 422
+
+
+def test_settings_reset_alert_baseline(client, tmp_db):
+    tmp_db.update_regime("QQQ", "golden", "2026-01-01")
+    assert client.put("/api/settings", headers=HEADERS,
+                      json={"ma_type": "sma"}).status_code == 200
+    assert all(row["current_regime"] is None for row in tmp_db.get_watchlist())
+
+
+def test_manual_mode_never_starts_scheduler(monkeypatch):
+    from app import scheduler
+    from types import SimpleNamespace
+    monkeypatch.setattr(scheduler, "get_settings", lambda: SimpleNamespace(scan_interval_min=0))
+    with patch.object(scheduler, "BackgroundScheduler") as factory:
+        scheduler.start()
+        factory.assert_not_called()
+
+
+def test_radar_independent_of_cross_settings(client):
+    with patch.object(market, "get_bars", return_value=fake_bars()):
+        result = client.get("/api/radar200?ma_type=sma", headers=HEADERS)
+    assert result.status_code == 200
+    assert result.json()["period"] == 200
+    assert len(result.json()["items"]) == 6
+    assert client.get("/api/settings", headers=HEADERS).json()["ma_type"] == "ema"
+    assert client.get("/api/radar200?ma_type=invalid", headers=HEADERS).status_code == 422
+    assert client.get("/api/radar200").status_code == 401

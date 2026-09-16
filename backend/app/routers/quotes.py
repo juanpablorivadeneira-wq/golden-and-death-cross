@@ -30,16 +30,37 @@ def get_app_settings() -> dict:
 
 @router.put("/settings")
 def update_app_settings(payload: SettingsPayload) -> dict:
-    if payload.ma_type is not None:
-        if payload.ma_type not in ("ema", "sma"):
-            raise HTTPException(status_code=422, detail="ma_type debe ser ema o sma")
-        db.set_setting("ma_type", payload.ma_type)
-    if payload.fast_len is not None:
-        if not 2 <= payload.fast_len <= 500:
-            raise HTTPException(status_code=422, detail="fast_len fuera de rango")
-        db.set_setting("fast_len", str(payload.fast_len))
-    if payload.slow_len is not None:
-        if not 2 <= payload.slow_len <= 500:
-            raise HTTPException(status_code=422, detail="slow_len fuera de rango")
-        db.set_setting("slow_len", str(payload.slow_len))
+    try:
+        db.update_engine_settings(payload.ma_type, payload.fast_len, payload.slow_len)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return get_app_settings()
+
+
+@router.get("/alerts")
+def alerts():
+    from .. import push, scheduler
+    return {"items": db.get_alerts(), "last_scan": scheduler.last_scan(),
+            "push_configured": push.push_configured(), "subscriptions": len(db.get_subscriptions())}
+
+
+@router.post("/scan")
+def scan_now():
+    from .. import scheduler
+    return scheduler.scan_watchlist()
+
+
+@router.get("/radar200")
+def radar_200(ma_type: str = "sma", refresh: bool = False):
+    from concurrent.futures import ThreadPoolExecutor
+    from .. import radar200
+    if ma_type not in ("sma", "ema"):
+        raise HTTPException(status_code=422, detail="Media inválida")
+    def analyze_ticker(row):
+        try:
+            return radar200.analyze(row["ticker"], market.get_bars(row["ticker"], force=refresh), ma_type)
+        except market.MarketError as exc:
+            return {"ticker": row["ticker"], "error": str(exc)}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(analyze_ticker, db.get_watchlist()))
+    return {"ma_type": ma_type, "period": 200, "items": results}

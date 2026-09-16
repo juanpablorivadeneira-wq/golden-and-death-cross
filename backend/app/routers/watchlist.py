@@ -51,7 +51,9 @@ def add_ticker(ticker: str) -> TickerMetrics:
         raise HTTPException(status_code=404, detail=f"Sin datos para {ticker}: {metrics.error}")
     if not db.add_ticker(ticker):
         raise HTTPException(status_code=409, detail=f"{ticker} ya está en la lista")
-    db.update_regime(ticker, metrics.regime, metrics.cross_date)
+    baseline = engine.analyze(ticker, market.closed_bars(market.get_bars(ticker)), ma_type, fast_len, slow_len)
+    if not baseline.error:
+        db.update_regime(ticker, baseline.regime, baseline.cross_date)
     return metrics
 
 

@@ -5,6 +5,7 @@ exponencial. Los errores se propagan como MarketError; nunca deben tumbar
 el scheduler ni los endpoints (cada capa los captura por ticker).
 """
 import threading
+from pathlib import Path
 import time
 import logging
 
@@ -21,6 +22,7 @@ HISTORY_YEARS = 2
 
 _cache: dict[str, tuple[float, list[Bar]]] = {}
 _cache_lock = threading.Lock()
+_yahoo_initialized = False
 
 
 class MarketError(Exception):
@@ -33,6 +35,13 @@ def active_source() -> str:
 
 def _fetch_yfinance(ticker: str) -> list[Bar]:
     import yfinance as yf
+
+    global _yahoo_initialized
+    with _cache_lock:
+        if not _yahoo_initialized:
+            cache_dir = Path(get_settings().db_path).parent / "yfinance-cache"
+            yf.set_tz_cache_location(str(cache_dir))
+            _yahoo_initialized = True
 
     df = yf.Ticker(ticker).history(period=f"{HISTORY_YEARS}y", interval="1d",
                                    auto_adjust=False)
@@ -100,3 +109,17 @@ def get_bars(ticker: str, force: bool = False) -> list[Bar]:
 def clear_cache() -> None:
     with _cache_lock:
         _cache.clear()
+
+
+def closed_bars(bars, now=None):
+    """Acciones USA: excluir sesión actual hasta las 17:00 de Nueva York.
+
+    Margen conservador de una hora tras el cierre regular; cierres anticipados
+    se confirman también a las 17:00. No sintetiza barras en días sin sesión.
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(ZoneInfo("America/New_York"))
+    now = now.astimezone(ZoneInfo("America/New_York"))
+    return [b for b in bars if datetime.fromtimestamp(b.t, ZoneInfo("UTC")).date() < now.date()
+            or (datetime.fromtimestamp(b.t, ZoneInfo("UTC")).date() == now.date() and now.hour >= 17)]

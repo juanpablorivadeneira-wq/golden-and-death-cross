@@ -1,49 +1,17 @@
 @echo off
-title Cross Monitor
+setlocal
+ title Cross Monitor - Radar diario
 cd /d "%~dp0"
-
-rem ── Verificar que los archivos necesarios esten en esta carpeta ──
-if not exist "server.py" (
-    echo [ERROR] No se encuentra server.py en esta carpeta.
-    echo Coloca CrossMonitor.bat, server.py y cross_monitor_v3.html juntos.
-    pause
-    exit /b 1
+if exist ".venv\Scripts\python.exe" (
+  set "CROSS_PY=.venv\Scripts\python.exe"
+) else (
+  echo Falta el entorno de la aplicacion.
+  echo Preparalo con Python 3.12 e instala backend\requirements.txt.
+  pause
+  exit /b 1
 )
-if not exist "cross_monitor_v3.html" (
-    echo [ERROR] No se encuentra cross_monitor_v3.html en esta carpeta.
-    echo Coloca CrossMonitor.bat, server.py y cross_monitor_v3.html juntos.
-    pause
-    exit /b 1
-)
-
-rem ── Buscar Python (py launcher o python) ──
-where py >nul 2>nul
-if %errorlevel%==0 (
-    set "PYCMD=py"
-    goto :run
-)
-where python >nul 2>nul
-if %errorlevel%==0 (
-    set "PYCMD=python"
-    goto :run
-)
-
-echo [ERROR] Python no esta instalado.
-echo.
-echo Instalalo desde Microsoft Store buscando "Python 3.12"
-echo o desde https://www.python.org/downloads/
-echo Luego vuelve a hacer doble clic en este archivo.
-pause
-exit /b 1
-
-:run
-echo ============================================
-echo   CROSS MONITOR - Golden / Death Cross
-echo ============================================
-echo.
-echo Iniciando servidor... el navegador se abrira solo.
-echo NO CIERRES esta ventana mientras uses el monitor.
-echo Para detener: cierra esta ventana o presiona Ctrl+C.
-echo.
-%PYCMD% server.py
+echo Cross Monitor - acceso local sin token
+echo Revision diaria a las 17:00 de Nueva York. No consume tokens de IA.
+echo Mantener esta ventana abierta para recibir alertas.
+"%CROSS_PY%" -B scripts\run_local.py
 pause

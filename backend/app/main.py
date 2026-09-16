@@ -37,6 +37,7 @@ def health() -> HealthResponse:
     """Único endpoint sin autenticación (healthchecks de Docker)."""
     return HealthResponse(
         status="ok",
+        scan_daily=get_settings().scan_daily,
         last_scan=scheduler.last_scan(),
         data_source=market.active_source(),
         scan_interval_min=get_settings().scan_interval_min,

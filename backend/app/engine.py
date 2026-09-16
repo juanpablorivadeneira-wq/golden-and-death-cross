@@ -97,6 +97,7 @@ def analyze(ticker: str, bars: list[Bar], ma_type: str,
 
     return TickerMetrics(
         ticker=ticker,
+        bar_date=datetime.fromtimestamp(bars[n].t, tz=timezone.utc).strftime("%Y-%m-%d"),
         price=closes[n],
         ma_fast=fast[n],
         ma_slow=slow[n],

@@ -16,6 +16,7 @@ class Bar(BaseModel):
 class TickerMetrics(BaseModel):
     """Resultado del análisis de un ticker (equivale al analyze() del prototipo)."""
     ticker: str
+    bar_date: Optional[str] = None
     price: Optional[float] = None
     ma_fast: Optional[float] = None
     ma_slow: Optional[float] = None
@@ -61,6 +62,7 @@ class PushSubscription(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    scan_daily: bool = False
     status: str
     last_scan: Optional[str] = None
     data_source: str
