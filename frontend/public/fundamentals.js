@@ -36,7 +36,10 @@ async function load(force = false) {
     const [data, groups] = await Promise.all([api("/api/watchlist"), WatchlistGroups.list(watchlistApi)]);
     state.items = data.tickers;
     state.groups = groups;
-    if (!state.items.some(t => t.ticker === state.selected)) state.selected = state.items.find(t => !t.error)?.ticker || null;
+    if (!state.items.some(t => t.ticker === state.selected)) {
+      const saved = SelectedTicker.get();
+      state.selected = (saved && state.items.find(t => t.ticker === saved && !t.error)?.ticker) || state.items.find(t => !t.error)?.ticker || null;
+    }
     $("fund-status").textContent = `${state.items.length} activos en tu watchlist`;
     $("consulted").textContent = `Consulta: ${new Date().toLocaleTimeString()}`;
     renderList();
@@ -47,13 +50,35 @@ async function load(force = false) {
 }
 
 function buildFundItem(t) {
-  const btn = document.createElement("button"); btn.className = `fund-item${state.selected === t.ticker ? " selected" : ""}`;
+  // Es un <div>, no un <button>: necesita anidar el botón "×" de eliminar, y
+  // un <button> no puede contener otro <button>.
+  const item = document.createElement("div"); item.className = `fund-item${state.selected === t.ticker ? " selected" : ""}`;
   const name = document.createElement("strong"); name.textContent = t.ticker;
+  const right = document.createElement("span"); right.className = "fund-item-right";
   const price = document.createElement("span"); price.textContent = t.price != null ? t.price.toFixed(2) : "";
   const picker = WatchlistGroups.renderPicker(state.groups, t.group, (value) => assignTickerGroup(t.ticker, value));
-  btn.append(name, price, picker);
-  btn.onclick = () => selectTicker(t.ticker, false);
-  return btn;
+  right.append(price, picker, WatchlistEdit.renderRemoveButton(() => removeTicker(t.ticker)));
+  item.append(name, right);
+  const select = () => selectTicker(t.ticker, false);
+  item.addEventListener("click", select);
+  WatchlistEdit.makeFocusable(item, select);
+  return item;
+}
+async function removeTicker(ticker) {
+  try {
+    await watchlistApi(`/${encodeURIComponent(ticker)}`, { method: "DELETE" });
+    state.items = state.items.filter(t => t.ticker !== ticker);
+    const wasSelected = state.selected === ticker;
+    if (wasSelected) {
+      state.selected = state.items.find(t => !t.error)?.ticker || null;
+      if (state.selected) SelectedTicker.set(state.selected); else SelectedTicker.clear();
+    }
+    renderList();
+    if (wasSelected) {
+      if (state.selected) await selectTicker(state.selected, false);
+      else $("fund-detail").innerHTML = '<div class="empty">Selecciona un activo para ver su análisis fundamental.</div>';
+    }
+  } catch(e) { $("fund-status").textContent = `No se pudo eliminar ${ticker}: ${e.message}`; }
 }
 
 async function assignTickerGroup(ticker, value) {
@@ -108,6 +133,7 @@ async function createGroupPrompt() {
   } catch(e) { $("fund-status").textContent = e.message; }
 }
 $("fund-group-btn").onclick = createGroupPrompt;
+WatchlistEdit.bindToggle($("fund-list"), $("edit-btn"));
 
 function renderList() {
   const list = $("fund-list"); list.replaceChildren();
@@ -280,6 +306,7 @@ function renderSemaphore(container, title, sem, detailText, customVisual) {
 
 async function selectTicker(ticker, force) {
   state.selected = ticker;
+  SelectedTicker.set(ticker);
   renderList();
   const panel = $("fund-detail"); panel.replaceChildren();
   const loading = document.createElement("div"); loading.className = "empty"; loading.textContent = `Cargando ${ticker}…`; panel.append(loading);
@@ -413,6 +440,7 @@ async function addTicker() {
     if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a esta página.");
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
     state.selected = t;
+    SelectedTicker.set(t);
     await load();
   } catch(e) {
     $("fund-status").textContent = `No se pudo agregar ${t}: ${e.message}`;

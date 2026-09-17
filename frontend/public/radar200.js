@@ -46,7 +46,10 @@ async function load(force = false) {
     radar.trendLookback = data.ma_trend_lookback || radar.trendLookback;
     if (force) radar.detail = {}; // refresco: descarta detalle cacheado, se vuelve a pedir al dibujar
     const good = radar.items.filter(valid);
-    if (!good.some(d => d.ticker === radar.selected)) radar.selected = good[0]?.ticker || null;
+    if (!good.some(d => d.ticker === radar.selected)) {
+      const saved = SelectedTicker.get();
+      radar.selected = (saved && good.find(d => d.ticker === saved)?.ticker) || good[0]?.ticker || null;
+    }
     $("radar-status").textContent = `${good.length} activos disponibles · ${radar.items.length-good.length} con error`;
     $("consulted").textContent = `Consulta: ${new Date().toLocaleTimeString()}`;
     $("ma-label").textContent = `${radar.type.toUpperCase()} 200 · Diario`;
@@ -95,7 +98,10 @@ function render() {
   }
 }
 function buildDistanceItem(d) {
-  const button = document.createElement("button"); button.className = `distance-item${radar.selected === d.ticker ? " selected" : ""}`;
+  // Es un <div>, no un <button>: necesita anidar el botón "×" de eliminar, y
+  // un <button> no puede contener otro <button> (el navegador cerraría el
+  // exterior apenas viera el anidado).
+  const item = document.createElement("div"); item.className = `distance-item${radar.selected === d.ticker ? " selected" : ""}${d.error ? " disabled" : ""}`;
   const top = document.createElement("div"); top.className = "distance-top";
   const nameGroup = document.createElement("span"); nameGroup.className = "distance-name";
   const name = document.createElement("strong"); name.textContent = d.ticker; nameGroup.append(name);
@@ -105,10 +111,13 @@ function buildDistanceItem(d) {
     trend.textContent = trendIcon(d.ma_trend); nameGroup.append(trend);
   }
   top.append(nameGroup);
-  const distance = document.createElement("span"); distance.textContent = d.error ? "Sin datos" : signed(d.distance_pct); distance.className = d.distance_pct < 0 ? "death" : "golden"; top.append(distance);
+  const right = document.createElement("span"); right.className = "distance-top-right";
+  const distance = document.createElement("span"); distance.textContent = d.error ? "Sin datos" : signed(d.distance_pct); distance.className = d.distance_pct < 0 ? "death" : "golden"; right.append(distance);
+  right.append(WatchlistEdit.renderRemoveButton(() => removeTicker(d.ticker)));
+  top.append(right);
   const bottom = document.createElement("div"); bottom.className = "distance-bottom";
   const label = document.createElement("span"); label.textContent = d.error || `${near(d) ? "Cerca" : "Lejos"} · ${d.distance_pct === 0 ? "En la media" : d.distance_pct > 0 ? "Por encima" : "Por debajo"}`;
-  const price = document.createElement("span"); price.textContent = d.error ? "" : d.price.toFixed(2); bottom.append(label,price); button.append(top,bottom);
+  const price = document.createElement("span"); price.textContent = d.error ? "" : d.price.toFixed(2); bottom.append(label,price); item.append(top,bottom);
   const picker = WatchlistGroups.renderPicker(radar.groups, d.group, (value) => assignTickerGroup(d.ticker, value));
   bottom.append(picker);
   if (!d.error) {
@@ -122,11 +131,25 @@ function buildDistanceItem(d) {
     fill.style.left = d.distance_pct >= 0 ? "50%" : `${50 - mag}%`;
     fill.style.width = `${mag}%`;
     track.append(nearBand, tick, fill);
-    button.append(track);
-    button.onclick=()=>{radar.selected=d.ticker;render();draw();};
+    item.append(track);
+    const select = () => { radar.selected = d.ticker; SelectedTicker.set(d.ticker); render(); draw(); };
+    item.addEventListener("click", select);
+    WatchlistEdit.makeFocusable(item, select);
   }
-  else button.disabled=true;
-  return button;
+  return item;
+}
+async function removeTicker(t) {
+  try {
+    await watchlistApi(`/${encodeURIComponent(t)}`, { method: "DELETE" });
+    radar.items = radar.items.filter(x => x.ticker !== t);
+    const wasSelected = radar.selected === t;
+    if (wasSelected) {
+      radar.selected = radar.items.find(valid)?.ticker || null;
+      if (radar.selected) SelectedTicker.set(radar.selected); else SelectedTicker.clear();
+    }
+    render();
+    if (wasSelected) draw(); // draw() ya maneja radar.selected === null (limpia título/gráfico)
+  } catch(e) { $("radar-status").textContent = `No se pudo eliminar ${t}: ${e.message}`; }
 }
 async function assignTickerGroup(ticker, value) {
   if (value === "__new__") {
@@ -217,6 +240,7 @@ async function addTicker() {
     if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a este radar.");
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
     radar.selected = t;
+    SelectedTicker.set(t);
     await load();
   } catch(e) {
     $("radar-status").textContent = `No se pudo agregar ${t}: ${e.message}`;
@@ -226,6 +250,7 @@ $("radar-add-btn").onclick = addTicker;
 $("radar-ticker-input").addEventListener("keydown", e => { if (e.key === "Enter") addTicker(); });
 $("update").onclick=()=>load(true);$("average-type").onchange=()=>load();
 $("threshold").onchange=()=>{render();draw();};$("sort").onchange=render;
+WatchlistEdit.bindToggle($("distance-list"), $("edit-btn"));
 document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{radar.filter=b.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===b));render();});
 document.querySelectorAll("[data-range]").forEach(b=>b.onclick=()=>{radar.range=Number(b.dataset.range);document.querySelectorAll("[data-range]").forEach(x=>x.classList.toggle("active",x===b));setRange();});
 function installDistanceCursor() {

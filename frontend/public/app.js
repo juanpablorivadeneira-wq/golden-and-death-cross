@@ -155,7 +155,9 @@ async function refreshAll() {
     renderWatchlist();
 
     if (!state.selected) {
-      const first = data.tickers.find(t => !t.error);
+      const saved = SelectedTicker.get();
+      const preferred = saved && data.tickers.find(t => t.ticker === saved && !t.error);
+      const first = preferred || data.tickers.find(t => !t.error);
       if (first) selectTicker(first.ticker);
     } else {
       renderChart(state.selected);
@@ -321,15 +323,6 @@ async function createGroupPrompt() {
 }
 document.getElementById("add-group-btn").addEventListener("click", createGroupPrompt);
 
-let editMode = false;
-function toggleEditMode() {
-  editMode = !editMode;
-  document.getElementById("watchlist").classList.toggle("editing", editMode);
-  const btn = document.getElementById("edit-btn");
-  btn.textContent = editMode ? "Listo" : "Editar lista";
-  btn.classList.toggle("primary", editMode);
-}
-
 async function addTicker() {
   const input = document.getElementById("ticker-input");
   const t = input.value.trim().toUpperCase();
@@ -441,6 +434,7 @@ async function renderChart(t) {
 
 function selectTicker(t) {
   state.selected = t;
+  SelectedTicker.set(t);
   renderWatchlist();
   document.getElementById("chart-title").innerHTML = `<strong>${t}</strong> · Diario`;
   renderChart(t);
@@ -601,7 +595,7 @@ document.querySelectorAll("[data-range]").forEach(button => button.addEventListe
 }));
 
 document.getElementById("add-btn").addEventListener("click", addTicker);
-document.getElementById("edit-btn").addEventListener("click", toggleEditMode);
+WatchlistEdit.bindToggle(document.getElementById("watchlist"), document.getElementById("edit-btn"));
 document.getElementById("ticker-input").addEventListener("keydown", e => { if (e.key === "Enter") addTicker(); });
 document.getElementById("refresh-btn").addEventListener("click", refreshAll);
 document.getElementById("ma-type").addEventListener("change", async e => {

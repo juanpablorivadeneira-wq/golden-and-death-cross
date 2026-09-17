@@ -134,3 +134,45 @@ const WatchlistGroups = {
   promptText(message, defaultValue = "") { return WatchlistGroups._dialog(message, { input: true, defaultValue }); },
   confirmAction(message, confirmLabel = "Eliminar") { return WatchlistGroups._dialog(message, { confirmLabel, danger: true }); },
 };
+
+// Ticker actualmente enfocado, compartido entre las 3 páginas (Cross Monitor,
+// Radar MA 200, Análisis Fundamental) para que cambiar de página no reinicie
+// la selección al primer ticker de la lista.
+const SELECTED_TICKER_KEY = "cross-monitor:selected-ticker";
+const SelectedTicker = {
+  get() { try { return localStorage.getItem(SELECTED_TICKER_KEY) || null; } catch { return null; } },
+  set(ticker) { try { if (ticker) localStorage.setItem(SELECTED_TICKER_KEY, ticker); } catch { /* localStorage no disponible */ } },
+  clear() { try { localStorage.removeItem(SELECTED_TICKER_KEY); } catch { /* localStorage no disponible */ } },
+};
+
+// Botón "Editar lista" que revela los "×" de eliminar ticker (ver `.remove`
+// en styles.css, oculto salvo dentro de `.editing`) -- mismo patrón en las 3
+// páginas, factorizado acá para no triplicarlo.
+const WatchlistEdit = {
+  bindToggle(listEl, btnEl) {
+    let editing = false;
+    btnEl.addEventListener("click", () => {
+      editing = !editing;
+      listEl.classList.toggle("editing", editing);
+      btnEl.textContent = editing ? "Listo" : "Editar lista";
+      btnEl.classList.toggle("primary", editing);
+    });
+  },
+  // Botón "×" listo para insertar en una fila de ticker; `onRemove` no recibe
+  // argumentos (la página ya sabe qué ticker es por closure).
+  renderRemoveButton(onRemove) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "remove"; btn.title = "Quitar de la lista"; btn.textContent = "×";
+    btn.addEventListener("click", (e) => { e.stopPropagation(); onRemove(); });
+    return btn;
+  },
+  // Hace que un contenedor no-<button> (necesario para poder anidar el "×")
+  // se comporte como uno: foco por Tab y activación con Enter/Espacio.
+  makeFocusable(el, onActivate) {
+    el.tabIndex = 0;
+    el.setAttribute("role", "button");
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
+    });
+  },
+};
