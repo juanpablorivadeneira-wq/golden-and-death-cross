@@ -44,6 +44,7 @@ const state = {
   fastLen: 50,
   slowLen: 200,
   tickers: [],        // [{ticker, price, regime, ...}] tal como llega de la API
+  groups: [],
   selected: null,
   refreshing: false,
   filter: "all",
@@ -51,6 +52,8 @@ const state = {
 
   chart: null, priceSeries: null, fastSeries: null, slowSeries: null,
 };
+const GROUPS_PAGE_KEY = "cross";
+const watchlistApi = (path, options) => api(`/watchlist${path}`, options);
 
 // ═══════════════════════════════════════════════════════
 //  API
@@ -125,6 +128,7 @@ async function refreshAll() {
     const scan = await api("/scan", { method: "POST" });
     if (scan.errors) logAlert(`${scan.errors} activo(s) no pudieron revisarse. Consulta el estado de cada tarjeta.`);
     const data = await api("/watchlist");
+    state.groups = await WatchlistGroups.list(watchlistApi).catch(() => state.groups);
     const sameSettings = state.maType === data.ma_type && state.fastLen === data.fast_len && state.slowLen === data.slow_len;
     Object.keys(ohlcCache).forEach(k => delete ohlcCache[k]);
     state.maType = data.ma_type;
@@ -177,10 +181,33 @@ function renderWatchlist() {
     el.innerHTML = '<div class="empty">Agrega un ticker para comenzar el monitoreo.</div>';
     return;
   }
-  const maLabel = state.maType.toUpperCase();
   const visible = state.tickers.filter(d => state.filter === "all" || (state.filter === "near" ? isNear(d) : !d.error && d.regime === state.filter));
-  if (!visible.length) el.innerHTML = '<div class="empty">No hay activos en este filtro.<br>Prueba con Todos.</div>';
-  for (const d of visible) {
+  if (!visible.length) { el.innerHTML = '<div class="empty">No hay activos en este filtro.<br>Prueba con Todos.</div>'; return; }
+  const sections = WatchlistGroups.bucket(visible, state.groups);
+  for (const section of sections) {
+    // "Sin categoría" solo se muestra si tiene tickers; un grupo real se
+    // muestra aunque esté vacío (recién creado, o vacío por el filtro
+    // actual) para poder seguir renombrándolo/eliminándolo.
+    if (!section.items.length && !section.name) continue;
+    if (!section.name && state.groups.length === 0) {
+      for (const d of section.items) el.appendChild(buildCard(d));
+      continue;
+    }
+    const body = WatchlistGroups.renderSection(el, GROUPS_PAGE_KEY, section.name, section.items.length, {
+      onMove: (dir) => moveGroupBy(section.name, dir),
+      onRename: () => renameGroupPrompt(section.name),
+      onDelete: () => deleteGroupPrompt(section.name),
+    });
+    if (!section.items.length) {
+      const empty = document.createElement("div"); empty.className = "wg-empty";
+      empty.textContent = "Sin tickers en este grupo todavía — asígnalos desde el selector de cada ticker.";
+      body.appendChild(empty);
+    }
+    for (const d of section.items) body.appendChild(buildCard(d));
+  }
+}
+function buildCard(d) {
+    const maLabel = state.maType.toUpperCase();
     const t = d.ticker;
     const card = document.createElement("div");
     card.className = "card"
@@ -243,9 +270,56 @@ function renderWatchlist() {
     if (rm) rm.addEventListener("click", (ev) => { ev.stopPropagation(); removeTicker(t); });
     const rt = card.querySelector(".retry");
     if (rt) rt.addEventListener("click", (ev) => { ev.stopPropagation(); refreshAll(); });
-    el.appendChild(card);
-  }
+    const gauge = card.querySelector(".gauge");
+    if (gauge) {
+      const picker = WatchlistGroups.renderPicker(state.groups, d.group, (value) => assignTickerGroup(t, value));
+      picker.classList.add("wg-picker-card");
+      gauge.after(picker);
+    }
+    return card;
 }
+async function assignTickerGroup(ticker, value) {
+  if (value === "__new__") {
+    const name = await WatchlistGroups.promptText("Nombre del nuevo grupo:");
+    if (!name) { renderWatchlist(); return; }
+    try { state.groups = await WatchlistGroups.create(watchlistApi, name); value = name; }
+    catch(e) { logAlert(`No se pudo crear el grupo: ${e.message}`); renderWatchlist(); return; }
+  }
+  try {
+    await WatchlistGroups.setTickerGroup(watchlistApi, ticker, value || null);
+    const item = state.tickers.find(x => x.ticker === ticker);
+    if (item) item.group = value || null;
+    renderWatchlist();
+  } catch(e) { logAlert(`No se pudo asignar el grupo: ${e.message}`); }
+}
+async function renameGroupPrompt(name) {
+  const next = await WatchlistGroups.promptText("Nuevo nombre del grupo:", name);
+  if (!next || next === name) return;
+  try {
+    state.groups = await WatchlistGroups.rename(watchlistApi, name, next);
+    for (const x of state.tickers) if (x.group === name) x.group = next;
+    renderWatchlist();
+  } catch(e) { logAlert(`No se pudo renombrar el grupo: ${e.message}`); }
+}
+async function deleteGroupPrompt(name) {
+  if (!(await WatchlistGroups.confirmAction(`¿Eliminar el grupo "${name}"? Los tickers vuelven a "Sin categoría".`))) return;
+  try {
+    state.groups = await WatchlistGroups.remove(watchlistApi, name);
+    for (const x of state.tickers) if (x.group === name) x.group = null;
+    renderWatchlist();
+  } catch(e) { logAlert(`No se pudo eliminar el grupo: ${e.message}`); }
+}
+async function moveGroupBy(name, direction) {
+  try { state.groups = await WatchlistGroups.move(watchlistApi, name, direction); renderWatchlist(); }
+  catch(e) { logAlert(`No se pudo reordenar el grupo: ${e.message}`); }
+}
+async function createGroupPrompt() {
+  const name = await WatchlistGroups.promptText("Nombre del nuevo grupo:");
+  if (!name) return;
+  try { state.groups = await WatchlistGroups.create(watchlistApi, name); renderWatchlist(); }
+  catch(e) { logAlert(`No se pudo crear el grupo: ${e.message}`); }
+}
+document.getElementById("add-group-btn").addEventListener("click", createGroupPrompt);
 
 let editMode = false;
 function toggleEditMode() {

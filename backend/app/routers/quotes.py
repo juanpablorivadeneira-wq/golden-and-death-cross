@@ -64,7 +64,13 @@ def radar_200(ma_type: str = "sma", refresh: bool = False, ticker: str | None = 
             return {"ticker": t, "error": str(exc)}
 
     if ticker:
-        item = analyze_one(ticker.strip().upper())
+        ticker = ticker.strip().upper()
+        item = analyze_one(ticker)
+        # Mismo campo "group" que ya lleva cada fila del modo lista -- si no,
+        # el detalle de un ticker (usado por el gráfico) queda con una forma
+        # distinta a la de la lista para el mismo ticker.
+        row = next((r for r in db.get_watchlist() if r["ticker"] == ticker), None)
+        item["group"] = row["group_name"] if row else None
         return {"ma_type": ma_type, "period": 200,
                 "ma_trend_lookback": radar200.TREND_LOOKBACK, "item": item}
 
@@ -72,9 +78,46 @@ def radar_200(ma_type: str = "sma", refresh: bool = False, ticker: str | None = 
     # vía ?ticker=, evitando serializar 5 años de historia por cada fila de la lista).
     def summary(row) -> dict:
         result = analyze_one(row["ticker"])
-        return {k: v for k, v in result.items() if k not in ("bars", "series")}
+        result = {k: v for k, v in result.items() if k not in ("bars", "series")}
+        result["group"] = row["group_name"]
+        return result
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(summary, db.get_watchlist()))
     return {"ma_type": ma_type, "period": 200,
             "ma_trend_lookback": radar200.TREND_LOOKBACK, "items": results}
+
+
+@router.get("/fundamentals/{ticker}")
+def get_fundamentals(ticker: str, refresh: bool = False) -> dict:
+    from concurrent.futures import ThreadPoolExecutor
+    from .. import fundamentals, technical
+    ticker = ticker.strip().upper()
+    # fundamentals.analyze (yfinance .info/recomendaciones/estados financieros)
+    # y market.get_bars (5 años de OHLC diario) no dependen entre sí -- en
+    # paralelo, el tiempo de espera es el máximo de los dos, no la suma.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_result = pool.submit(fundamentals.analyze, ticker, force=refresh)
+        fut_bars = pool.submit(market.get_bars, ticker, force=refresh)
+        result = fut_result.result()
+        if result.get("error"):
+            return result
+        # A diferencia de los semáforos fundamentales (que no aplican a ETFs), el
+        # medidor técnico se calcula solo con precio -- funciona igual para
+        # cualquier ticker con historial, ETFs incluidos.
+        try:
+            bars = fut_bars.result()
+            tech = technical.analyze(bars)
+            # El semáforo usa el resumen combinado (medias + osciladores) como
+            # nivel/score principal, y guarda el desglose de cada grupo para
+            # el detalle -- mismo patrón que "breakdown" en consenso de analistas.
+            result["semaphores"]["technical"] = {
+                **tech["summary"],
+                "moving_averages": tech["moving_averages"],
+                "oscillators": tech["oscillators"],
+            }
+        except market.MarketError:
+            result["semaphores"]["technical"] = {
+                "level": "none", "label": "Sin datos", "score": None, "buy": 0, "sell": 0, "neutral": 0,
+                "moving_averages": None, "oscillators": None}
+    return result

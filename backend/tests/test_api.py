@@ -70,6 +70,44 @@ def test_agregar_ticker_sin_datos(client, monkeypatch):
         assert client.post("/api/watchlist/XXXX", headers=HEADERS).status_code == 404
 
 
+def test_grupos_crud(client):
+    assert client.get("/api/watchlist/groups", headers=HEADERS).json() == {"groups": []}
+    r = client.post("/api/watchlist/groups", json={"name": "FANG+2"}, headers=HEADERS)
+    assert r.status_code == 201
+    assert r.json() == {"groups": ["FANG+2"]}
+    # duplicado
+    assert client.post("/api/watchlist/groups", json={"name": "FANG+2"}, headers=HEADERS).status_code == 409
+    r = client.post("/api/watchlist/groups", json={"name": "Cripto"}, headers=HEADERS)
+    assert r.json() == {"groups": ["FANG+2", "Cripto"]}
+    # reordenar
+    r = client.post("/api/watchlist/groups/Cripto/move", json={"direction": "up"}, headers=HEADERS)
+    assert r.json() == {"groups": ["Cripto", "FANG+2"]}
+    # renombrar
+    r = client.put("/api/watchlist/groups/Cripto", json={"name": "Crypto"}, headers=HEADERS)
+    assert r.json() == {"groups": ["Crypto", "FANG+2"]}
+    # eliminar
+    r = client.delete("/api/watchlist/groups/Crypto", headers=HEADERS)
+    assert r.json() == {"groups": ["FANG+2"]}
+    assert client.delete("/api/watchlist/groups/No-existe", headers=HEADERS).status_code == 404
+
+
+def test_asignar_ticker_a_grupo(client):
+    with patch.object(market, "_fetch_yfinance", return_value=fake_bars()):
+        client.post("/api/watchlist/groups", json={"name": "FANG+2"}, headers=HEADERS)
+        r = client.put("/api/watchlist/AAPL/group", json={"group": "FANG+2"}, headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["group"] == "FANG+2"
+        r = client.get("/api/watchlist", headers=HEADERS)
+        aapl = next(t for t in r.json()["tickers"] if t["ticker"] == "AAPL")
+        assert aapl["group"] == "FANG+2"
+        # grupo inexistente
+        assert client.put("/api/watchlist/AAPL/group", json={"group": "No existe"},
+                          headers=HEADERS).status_code == 404
+        # volver a sin grupo
+        r = client.put("/api/watchlist/AAPL/group", json={"group": None}, headers=HEADERS)
+        assert r.json()["group"] is None
+
+
 def test_ohlc(client):
     with patch.object(market, "_fetch_yfinance", return_value=fake_bars()):
         r = client.get("/api/quotes/QQQ/ohlc", headers=HEADERS)
@@ -141,3 +179,49 @@ def test_radar_independent_of_cross_settings(client):
     assert client.get("/api/settings", headers=HEADERS).json()["ma_type"] == "ema"
     assert client.get("/api/radar200?ma_type=invalid", headers=HEADERS).status_code == 422
     assert client.get("/api/radar200").status_code == 401
+
+
+def test_radar_single_ticker_includes_group(client):
+    # El detalle de un ticker (?ticker=) debe traer el mismo campo "group"
+    # que ya trae cada fila del modo lista, para el mismo ticker.
+    client.post("/api/watchlist/groups", json={"name": "FANGS"}, headers=HEADERS)
+    with patch.object(market, "get_bars", return_value=fake_bars()):
+        client.put("/api/watchlist/QQQ/group", json={"group": "FANGS"}, headers=HEADERS)
+        result = client.get("/api/radar200?ticker=QQQ", headers=HEADERS)
+    assert result.status_code == 200
+    assert result.json()["item"]["group"] == "FANGS"
+
+
+def test_fundamentals_endpoint_merges_technical_semaphore(client):
+    from app import fundamentals
+
+    fake_analysis = {
+        "ticker": "AAPL", "error": None, "is_fund": False, "sector": "Technology",
+        "semaphores": {
+            "health": {"level": "green", "label": "Saludable", "detail": "", "score": 8},
+            "analyst_consensus": {"level": "green", "label": "Comprar", "analysts": 10, "score": 8, "breakdown": None},
+            "target_price": {"level": "green", "label": "+10%", "upside_pct": 0.1, "score": 7},
+        },
+        "blocks": [],
+    }
+    with patch.object(fundamentals, "analyze", return_value=fake_analysis), \
+         patch.object(market, "get_bars", return_value=fake_bars()):
+        result = client.get("/api/fundamentals/AAPL", headers=HEADERS)
+    assert result.status_code == 200
+    tech = result.json()["semaphores"]["technical"]
+    assert tech["level"] in ("strong_buy", "buy", "neutral", "sell", "strong_sell")
+    assert tech["color"] in ("green", "yellow", "red")
+    assert set(tech["moving_averages"]) >= {"level", "color", "label", "score"}
+    assert set(tech["oscillators"]) >= {"level", "color", "label", "score"}
+
+
+def test_fundamentals_endpoint_handles_missing_bars(client):
+    from app import fundamentals
+
+    fake_analysis = {"ticker": "XXXX", "error": None, "is_fund": False, "sector": None,
+                     "semaphores": {"health": {}, "analyst_consensus": {}, "target_price": {}}, "blocks": []}
+    with patch.object(fundamentals, "analyze", return_value=fake_analysis), \
+         patch.object(market, "get_bars", side_effect=market.MarketError("sin datos")):
+        result = client.get("/api/fundamentals/XXXX", headers=HEADERS)
+    assert result.status_code == 200
+    assert result.json()["semaphores"]["technical"]["level"] == "none"

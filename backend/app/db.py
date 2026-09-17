@@ -51,7 +51,16 @@ def init_db() -> None:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS watchlist_groups (
+                name TEXT PRIMARY KEY,
+                sort_order INTEGER NOT NULL
+            );
         """)
+        # Migración: agrega group_name a instalaciones existentes (la tabla
+        # ya pudo haberse creado sin esta columna en una versión anterior).
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(watchlist)")}
+        if "group_name" not in cols:
+            conn.execute("ALTER TABLE watchlist ADD COLUMN group_name TEXT")
         # Semilla de watchlist solo en la primera ejecución
         count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
         seeded = conn.execute("SELECT value FROM settings WHERE key='seeded'").fetchone()
@@ -112,6 +121,80 @@ def update_regime(ticker: str, regime: str, cross_date: str | None) -> None:
             (regime, cross_date, ticker),
         )
         conn.commit()
+
+
+# ── Grupos de watchlist ───────────────────────────────────
+# Los grupos son solo una forma de organizar visualmente la misma watchlist
+# compartida (Cross Monitor / Radar / Análisis Fundamental) -- no cambian qué
+# tickers hay ni el motor de cruces, solo cómo se muestran agrupados.
+
+def list_groups() -> list[str]:
+    with _lock, _connect() as conn:
+        rows = conn.execute("SELECT name FROM watchlist_groups ORDER BY sort_order").fetchall()
+        return [r["name"] for r in rows]
+
+
+def create_group(name: str) -> bool:
+    with _lock, _connect() as conn:
+        top = conn.execute("SELECT COALESCE(MAX(sort_order), -1) FROM watchlist_groups").fetchone()[0]
+        try:
+            conn.execute("INSERT INTO watchlist_groups (name, sort_order) VALUES (?, ?)", (name, top + 1))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def rename_group(old_name: str, new_name: str) -> bool:
+    with _lock, _connect() as conn:
+        try:
+            cur = conn.execute("UPDATE watchlist_groups SET name = ? WHERE name = ?", (new_name, old_name))
+            if cur.rowcount == 0:
+                return False
+            conn.execute("UPDATE watchlist SET group_name = ? WHERE group_name = ?", (new_name, old_name))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+
+def delete_group(name: str) -> bool:
+    with _lock, _connect() as conn:
+        cur = conn.execute("DELETE FROM watchlist_groups WHERE name = ?", (name,))
+        if cur.rowcount == 0:
+            return False
+        conn.execute("UPDATE watchlist SET group_name = NULL WHERE group_name = ?", (name,))
+        conn.commit()
+        return True
+
+
+def move_group(name: str, direction: str) -> bool:
+    """direction: 'up' o 'down' -- intercambia sort_order con el vecino inmediato."""
+    with _lock, _connect() as conn:
+        rows = conn.execute("SELECT name, sort_order FROM watchlist_groups ORDER BY sort_order").fetchall()
+        names = [r["name"] for r in rows]
+        if name not in names:
+            return False
+        idx = names.index(name)
+        swap_idx = idx - 1 if direction == "up" else idx + 1
+        if swap_idx < 0 or swap_idx >= len(names):
+            return False
+        a, b = rows[idx], rows[swap_idx]
+        conn.execute("UPDATE watchlist_groups SET sort_order = ? WHERE name = ?", (b["sort_order"], a["name"]))
+        conn.execute("UPDATE watchlist_groups SET sort_order = ? WHERE name = ?", (a["sort_order"], b["name"]))
+        conn.commit()
+        return True
+
+
+def set_ticker_group(ticker: str, group_name: str | None) -> bool:
+    with _lock, _connect() as conn:
+        if group_name is not None:
+            exists = conn.execute("SELECT 1 FROM watchlist_groups WHERE name = ?", (group_name,)).fetchone()
+            if not exists:
+                return False
+        cur = conn.execute("UPDATE watchlist SET group_name = ? WHERE ticker = ?", (group_name, ticker))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 # ── Settings ──────────────────────────────────────────────

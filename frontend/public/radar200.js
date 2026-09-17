@@ -1,6 +1,17 @@
 "use strict";
-const radar = { items: [], detail: {}, selected: null, filter: "all", range: 252, token: "", chart: null, candles: null, average: null, type: "sma", trendLookback: 10 };
+const radar = { items: [], groups: [], detail: {}, selected: null, filter: "all", range: 252, token: "", chart: null, candles: null, average: null, type: "sma", trendLookback: 10 };
 const $ = id => document.getElementById(id);
+const GROUPS_PAGE_KEY = "radar200";
+async function watchlistApi(path, options = {}) {
+  const res = await fetch(`/api/watchlist${path}`, {
+    ...options,
+    headers: { "Content-Type": "application/json", "X-Auth-Token": radar.token, ...(options.headers || {}) },
+  });
+  if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a este radar.");
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+  if (res.status === 204) return null;
+  return res.json();
+}
 const threshold = () => Number($("threshold").value);
 const valid = d => !d.error;
 const near = d => valid(d) && Math.abs(d.distance_pct) <= threshold();
@@ -31,6 +42,7 @@ async function load(force = false) {
     if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a este radar.");
     if (!res.ok) throw new Error(`No se pudo obtener la lista (${res.status}).`);
     const data = await res.json(); radar.items = data.items; radar.type = data.ma_type;
+    radar.groups = await WatchlistGroups.list(watchlistApi).catch(() => radar.groups);
     radar.trendLookback = data.ma_trend_lookback || radar.trendLookback;
     if (force) radar.detail = {}; // refresco: descarta detalle cacheado, se vuelve a pedir al dibujar
     const good = radar.items.filter(valid);
@@ -58,27 +70,106 @@ function render() {
     return (Math.abs(a.distance_pct)-Math.abs(b.distance_pct)) * ($("sort").value === "far" ? -1 : 1);
   });
   const list = $("distance-list"); list.replaceChildren();
-  if (!items.length) { const el = document.createElement("div"); el.className = "empty"; el.textContent = "No hay activos en este filtro. Agrega símbolos desde Cross Monitor o cambia el umbral."; list.append(el); }
-  for (const d of items) {
-    const button = document.createElement("button"); button.className = `distance-item${radar.selected === d.ticker ? " selected" : ""}`;
-    const top = document.createElement("div"); top.className = "distance-top";
-    const nameGroup = document.createElement("span"); nameGroup.className = "distance-name";
-    const name = document.createElement("strong"); name.textContent = d.ticker; nameGroup.append(name);
-    if (!d.error && d.ma_trend) {
-      const trend = document.createElement("span"); trend.className = `ma-trend ${trendClass(d.ma_trend)}`;
-      trend.title = trendTooltip(d.ma_trend);
-      trend.textContent = trendIcon(d.ma_trend); nameGroup.append(trend);
+  if (!items.length) { const el = document.createElement("div"); el.className = "empty"; el.textContent = "No hay activos en este filtro. Agrega símbolos desde Cross Monitor o cambia el umbral."; list.append(el); return; }
+  const sections = WatchlistGroups.bucket(items, radar.groups);
+  for (const section of sections) {
+    // "Sin categoría" solo se muestra si tiene tickers; un grupo real se
+    // muestra aunque esté vacío (recién creado, o vacío por el filtro
+    // actual) para poder seguir renombrándolo/eliminándolo.
+    if (!section.items.length && !section.name) continue;
+    if (!section.name && radar.groups.length === 0) {
+      for (const d of section.items) list.append(buildDistanceItem(d));
+      continue;
     }
-    top.append(nameGroup);
-    const distance = document.createElement("span"); distance.textContent = d.error ? "Sin datos" : signed(d.distance_pct); distance.className = d.distance_pct < 0 ? "death" : "golden"; top.append(distance);
-    const bottom = document.createElement("div"); bottom.className = "distance-bottom";
-    const label = document.createElement("span"); label.textContent = d.error || `${near(d) ? "Cerca" : "Lejos"} · ${d.distance_pct === 0 ? "En la media" : d.distance_pct > 0 ? "Por encima" : "Por debajo"}`;
-    const price = document.createElement("span"); price.textContent = d.error ? "" : d.price.toFixed(2); bottom.append(label,price); button.append(top,bottom);
-    if (!d.error) { const track = document.createElement("div"); track.className = `distance-track ${d.distance_pct < 0 ? "below" : ""}`; const fill = document.createElement("span"); fill.style.width = `${Math.min(100,Math.abs(d.distance_pct)/20*100)}%`; track.append(fill); button.append(track); button.onclick=()=>{radar.selected=d.ticker;render();draw();}; }
-    else button.disabled=true;
-    list.append(button);
+    const body = WatchlistGroups.renderSection(list, GROUPS_PAGE_KEY, section.name, section.items.length, {
+      onMove: (dir) => moveGroupBy(section.name, dir),
+      onRename: () => renameGroupPrompt(section.name),
+      onDelete: () => deleteGroupPrompt(section.name),
+    });
+    if (!section.items.length) {
+      const empty = document.createElement("div"); empty.className = "wg-empty";
+      empty.textContent = "Sin tickers en este grupo todavía — asígnalos desde el selector de cada ticker.";
+      body.append(empty);
+    }
+    for (const d of section.items) body.append(buildDistanceItem(d));
   }
 }
+function buildDistanceItem(d) {
+  const button = document.createElement("button"); button.className = `distance-item${radar.selected === d.ticker ? " selected" : ""}`;
+  const top = document.createElement("div"); top.className = "distance-top";
+  const nameGroup = document.createElement("span"); nameGroup.className = "distance-name";
+  const name = document.createElement("strong"); name.textContent = d.ticker; nameGroup.append(name);
+  if (!d.error && d.ma_trend) {
+    const trend = document.createElement("span"); trend.className = `ma-trend ${trendClass(d.ma_trend)}`;
+    trend.title = trendTooltip(d.ma_trend);
+    trend.textContent = trendIcon(d.ma_trend); nameGroup.append(trend);
+  }
+  top.append(nameGroup);
+  const distance = document.createElement("span"); distance.textContent = d.error ? "Sin datos" : signed(d.distance_pct); distance.className = d.distance_pct < 0 ? "death" : "golden"; top.append(distance);
+  const bottom = document.createElement("div"); bottom.className = "distance-bottom";
+  const label = document.createElement("span"); label.textContent = d.error || `${near(d) ? "Cerca" : "Lejos"} · ${d.distance_pct === 0 ? "En la media" : d.distance_pct > 0 ? "Por encima" : "Por debajo"}`;
+  const price = document.createElement("span"); price.textContent = d.error ? "" : d.price.toFixed(2); bottom.append(label,price); button.append(top,bottom);
+  const picker = WatchlistGroups.renderPicker(radar.groups, d.group, (value) => assignTickerGroup(d.ticker, value));
+  bottom.append(picker);
+  if (!d.error) {
+    const track = document.createElement("div"); track.className = "distance-track";
+    const halfBand = Math.min(50, threshold() / 20 * 50);
+    const nearBand = document.createElement("div"); nearBand.className = "track-near";
+    nearBand.style.left = `${50 - halfBand}%`; nearBand.style.width = `${halfBand * 2}%`;
+    const tick = document.createElement("div"); tick.className = "track-tick";
+    const mag = Math.min(50, Math.abs(d.distance_pct) / 20 * 50);
+    const fill = document.createElement("div"); fill.className = `track-fill ${d.distance_pct < 0 ? "below" : "above"}`;
+    fill.style.left = d.distance_pct >= 0 ? "50%" : `${50 - mag}%`;
+    fill.style.width = `${mag}%`;
+    track.append(nearBand, tick, fill);
+    button.append(track);
+    button.onclick=()=>{radar.selected=d.ticker;render();draw();};
+  }
+  else button.disabled=true;
+  return button;
+}
+async function assignTickerGroup(ticker, value) {
+  if (value === "__new__") {
+    const name = await WatchlistGroups.promptText("Nombre del nuevo grupo:");
+    if (!name) { render(); return; }
+    try { radar.groups = await WatchlistGroups.create(watchlistApi, name); value = name; }
+    catch(e) { $("radar-status").textContent = e.message; render(); return; }
+  }
+  try {
+    await WatchlistGroups.setTickerGroup(watchlistApi, ticker, value || null);
+    const item = radar.items.find(d => d.ticker === ticker);
+    if (item) item.group = value || null;
+    render();
+  } catch(e) { $("radar-status").textContent = e.message; }
+}
+async function renameGroupPrompt(name) {
+  const next = await WatchlistGroups.promptText("Nuevo nombre del grupo:", name);
+  if (!next || next === name) return;
+  try {
+    radar.groups = await WatchlistGroups.rename(watchlistApi, name, next);
+    for (const d of radar.items) if (d.group === name) d.group = next;
+    render();
+  } catch(e) { $("radar-status").textContent = e.message; }
+}
+async function deleteGroupPrompt(name) {
+  if (!(await WatchlistGroups.confirmAction(`¿Eliminar el grupo "${name}"? Los tickers vuelven a "Sin categoría".`))) return;
+  try {
+    radar.groups = await WatchlistGroups.remove(watchlistApi, name);
+    for (const d of radar.items) if (d.group === name) d.group = null;
+    render();
+  } catch(e) { $("radar-status").textContent = e.message; }
+}
+async function moveGroupBy(name, direction) {
+  try { radar.groups = await WatchlistGroups.move(watchlistApi, name, direction); render(); }
+  catch(e) { $("radar-status").textContent = e.message; }
+}
+async function createGroupPrompt() {
+  const name = await WatchlistGroups.promptText("Nombre del nuevo grupo:");
+  if (!name) return;
+  try { radar.groups = await WatchlistGroups.create(watchlistApi, name); render(); }
+  catch(e) { $("radar-status").textContent = e.message; }
+}
+$("radar-group-btn").onclick = createGroupPrompt;
 function setRange() {
   const detail = radar.detail[radar.selected]; if(!detail || !radar.chart) return;
   if (!radar.range) radar.chart.timeScale().fitContent();
@@ -115,6 +206,24 @@ async function draw() {
   if(radar.chart){radar.candles.setData(detail.bars.map(b=>({time:b.t,open:b.o,high:b.h,low:b.l,close:b.c})));radar.average.applyOptions({title:maLabel});radar.average.setData(detail.bars.flatMap((b,i)=>detail.series[i]===null?[]:[{time:b.t,value:detail.series[i]}]));setRange();}
   $("chart-caption").textContent=`Última barra: ${d.bar_date} · ${near(d)?"Dentro":"Fuera"} del umbral ±${threshold()}%. La sesión en curso puede variar.`;
 }
+async function addTicker() {
+  const input = $("radar-ticker-input");
+  const t = input.value.trim().toUpperCase();
+  if (!t) return;
+  input.value = "";
+  $("radar-status").textContent = `Agregando ${t}…`;
+  try {
+    const res = await fetch(`/api/watchlist/${encodeURIComponent(t)}`, {method: "POST", headers: {"X-Auth-Token": radar.token}});
+    if (res.status === 401) throw new Error("Abre Cross Monitor para iniciar sesión y vuelve a este radar.");
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `HTTP ${res.status}`);
+    radar.selected = t;
+    await load();
+  } catch(e) {
+    $("radar-status").textContent = `No se pudo agregar ${t}: ${e.message}`;
+  }
+}
+$("radar-add-btn").onclick = addTicker;
+$("radar-ticker-input").addEventListener("keydown", e => { if (e.key === "Enter") addTicker(); });
 $("update").onclick=()=>load(true);$("average-type").onchange=()=>load();
 $("threshold").onchange=()=>{render();draw();};$("sort").onchange=render;
 document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{radar.filter=b.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.classList.toggle("active",x===b));render();});

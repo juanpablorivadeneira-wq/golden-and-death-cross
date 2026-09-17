@@ -29,6 +29,7 @@ class TickerMetrics(BaseModel):
     converging: Optional[bool] = None
     est_sessions_to_cross: Optional[float] = None  # null si divergen o >250
     error: Optional[str] = None
+    group: Optional[str] = None             # nombre del grupo (None = sin agrupar)
 
 
 class WatchlistResponse(BaseModel):
@@ -36,6 +37,22 @@ class WatchlistResponse(BaseModel):
     fast_len: int
     slow_len: int
     tickers: list[TickerMetrics]
+
+
+class GroupsResponse(BaseModel):
+    groups: list[str]
+
+
+class CreateGroupPayload(BaseModel):
+    name: str
+
+
+class SetTickerGroupPayload(BaseModel):
+    group: Optional[str] = None
+
+
+class MoveGroupPayload(BaseModel):
+    direction: str  # "up" | "down"
 
 
 class CrossMarker(BaseModel):

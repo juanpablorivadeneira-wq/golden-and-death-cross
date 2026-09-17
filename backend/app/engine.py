@@ -9,6 +9,17 @@ from typing import Optional
 from .models import Bar, CrossMarker, TickerMetrics
 
 
+def clamp(value, lo, hi):
+    return max(lo, min(hi, value))
+
+
+def ratio_to_score10(ratio: float) -> int:
+    """Convierte un ratio -1..1 (ej. señales netas / total evaluadas) a una
+    escala 1-10 -- compartido por fundamentals.py y technical.py para que
+    "Salud Fundamental" y "Análisis Técnico" usen la misma conversión."""
+    return int(clamp(round((ratio + 1) / 2 * 10), 1, 10))
+
+
 def sma_series(closes: list[float], length: int) -> list[Optional[float]]:
     """SMA rolling; None hasta tener `length` valores."""
     out: list[Optional[float]] = [None] * len(closes)

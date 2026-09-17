@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css?v=radar-10">
+<link rel="stylesheet" href="styles.css?v=radar-42">
 </head>
 <body>
 
@@ -27,7 +27,7 @@
 
 <header class="topbar">
   <a class="brand" href="/" aria-label="Cross Monitor inicio"><span class="brand-icon">↗</span><span>CROSS<span class="brand-light">MONITOR</span><small>OBSERVATORIO DE TENDENCIAS</small></span></a>
-  <nav aria-label="Herramientas"><a class="nav-active" href="/" aria-current="page">Cross Monitor</a><a href="/radar200.html">Radar MA 200</a><a href="#history-panel">Alertas</a></nav>
+  <nav aria-label="Herramientas"><a class="nav-active" href="/" aria-current="page">Cross Monitor</a><a href="/radar200.html">Radar MA 200</a><a href="/fundamentals.html">Análisis Fundamental</a></nav>
   <span class="source-pill"><i></i> Yahoo Finance · Diario</span>
 </header>
 <div class="workspace">
@@ -41,7 +41,7 @@
 <div class="status-bar" role="status"><span id="status-text">Conectando con tus activos…</span><span>Consulta: <span id="last-update">—</span></span></div>
 <main>
   <section class="watch-panel"><div class="panel-heading"><div><div class="eyebrow">RADAR</div><h2>Tu seguimiento</h2></div><button id="edit-btn" class="quiet">Editar lista</button></div>
-    <div class="add-row"><input id="ticker-input" type="text" placeholder="Símbolo, ej. NVDA" maxlength="10" aria-label="Símbolo para agregar"><button id="add-btn">+ Agregar</button></div>
+    <div class="add-row"><input id="ticker-input" type="text" placeholder="Símbolo, ej. NVDA" maxlength="10" aria-label="Símbolo para agregar"><button id="add-btn" class="primary">+ Agregar</button><button id="add-group-btn" class="quiet">+ Grupo</button></div>
     <div class="filter-row" role="group" aria-label="Filtrar activos"><button class="active" data-filter="all">Todos</button><button data-filter="golden">Golden</button><button data-filter="death">Death</button><button data-filter="near">Cerca</button></div>
     <div id="watchlist" class="watchlist"><div class="empty">Preparando tu radar…</div></div>
     <div class="watch-foot">El régimen describe la posición de las medias, no una señal nueva.</div>
@@ -57,6 +57,7 @@
 <footer><span>CROSS MONITOR <b> / </b> Lectura técnica, con contexto.</span><span>La convergencia es una estimación, no una garantía de cruce.</span></footer>
 </div>
 <script src="vendor/lightweight-charts.standalone.production.js"></script>
-<script src="app.js?v=radar-5"></script>
+<script src="groups.js?v=2"></script>
+<script src="app.js?v=radar-8"></script>
 </body>
 </html>
