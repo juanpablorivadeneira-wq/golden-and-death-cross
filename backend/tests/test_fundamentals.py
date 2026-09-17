@@ -420,3 +420,34 @@ def test_cache_avoids_second_fetch():
         assert mock.call_count == 1
         fundamentals.analyze("AAPL", force=True)
         assert mock.call_count == 2
+
+
+def test_dividend_yield_uses_explicit_rate_not_ambiguous_provider_units():
+    for upstream in (0.33, 0.0033):
+        info = fundamentals._normalize_info(full_info(dividendYield=upstream, dividendRate=1.10, currentPrice=332.41))
+        metric = next(m for b in fundamentals._build_blocks(info) for m in b["metrics"] if m["key"] == "dividendYield")
+        assert metric["display"] == "0.33%"
+        assert "Calculado" in metric["explanation"]
+
+
+def test_missing_dividend_rate_is_not_guessed_and_zero_is_valid():
+    assert fundamentals._normalize_info(full_info())["dividendYield"] is None
+    assert fundamentals._normalize_info(full_info(dividendRate=0))["dividendYield"] == 0
+
+
+def test_invalid_ratios_and_nonfinite_values_are_not_scored_as_bargains():
+    info = fundamentals._normalize_info(full_info(trailingPE=-5, debtToEquity=-20, profitMargins=float("nan"), freeCashflow=float("inf")))
+    metrics = {m["key"]: m for b in fundamentals._build_blocks(info) for m in b["metrics"]}
+    assert metrics["trailingPE"]["display"] == "No interpretable"
+    assert metrics["debtToEquity"]["status"] == "none"
+    assert metrics["profitMargins"]["display"] == "Sin dato"
+    assert info["freeCashflow"] is None
+
+
+def test_money_currency_and_debt_percentage_are_explicit():
+    info = fundamentals._normalize_info(full_info(financialCurrency="EUR", currency="GBP"))
+    metrics = {m["key"]: m for b in fundamentals._build_blocks(info) for m in b["metrics"]}
+    assert metrics["freeCashflow"]["display"].endswith("EUR")
+    assert metrics["marketCap"]["display"].endswith("GBP")
+    assert metrics["debtToEquity"]["display"] == "40.0%"
+    assert all(m["explanation"] for m in metrics.values())

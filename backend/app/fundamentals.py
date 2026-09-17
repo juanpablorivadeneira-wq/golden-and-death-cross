@@ -6,6 +6,7 @@ bancos no reportan debt/equity ni current ratio) — se refleja como None/"Sin
 dato" en vez de forzar un valor, y el puntaje de salud ignora los campos
 ausentes en lugar de penalizarlos.
 """
+import math
 import threading
 import time
 
@@ -34,14 +35,14 @@ _DEBT_NORMAL_SECTORS = {"Financial Services", "Utilities", "Real Estate"}
 # (campo yfinance, etiqueta, explicación de una línea, formato)
 # formato: "pct" (0.12 -> "12.00%"), "ratio" (x -> "x.xx"), "money" (x -> "$1.23B"), "raw"
 VALUATION_FIELDS = [
-    ("trailingPE", "P/E (trailing)", "Cuántas veces la utilidad anual estás pagando por la acción. <15 barata, 15-25 razonable, >25 cara o con mucho crecimiento esperado.", "ratio"),
-    ("priceToSalesTrailing12Months", "P/S", "Precio contra ventas; útil cuando la empresa aún no tiene utilidades. <2 barata, >10 muy cara.", "ratio"),
+    ("trailingPE", "P/E (trailing)", "Precio ÷ beneficio por acción de los últimos doce meses. Compáralo con crecimiento, sector e historia; un múltiplo bajo no demuestra infravaloración.", "ratio"),
+    ("priceToSalesTrailing12Months", "P/S", "Capitalización ÷ ventas de los últimos doce meses. Debe interpretarse junto con márgenes y sector; no mide por sí solo si una acción está barata.", "ratio"),
     ("priceToBook", "P/B", "Cuánto pagás por cada dólar de patrimonio contable. <1 puede indicar desconfianza o ganga; >5 común en tech.", "ratio"),
-    ("trailingPegRatio", "PEG", "El P/E ajustado por cuánto crece la empresa. ~1 precio justo según su crecimiento; >2 cara incluso considerando el crecimiento.", "ratio"),
+    ("trailingPegRatio", "PEG", "P/E relativo al crecimiento usado por el proveedor. Depende del horizonte y de la estabilidad de ese crecimiento; no determina un precio justo por sí solo.", "ratio"),
 ]
 DEBT_FIELDS = [
     ("debtToEquity", "Deuda/Patrimonio", "Cuánta deuda tiene por cada 100 de capital propio. <50 conservador, 50-150 normal, >200 endeudada. En utilities, inmobiliarias (REITs) y financieras un valor alto es normal del negocio, no una alerta.", "de_ratio"),
-    ("currentRatio", "Current ratio", "Activos líquidos ÷ deudas de corto plazo. >1.5 cómodo, <1 puede tener problemas para pagar lo inmediato.", "ratio"),
+    ("currentRatio", "Current ratio", "Activos corrientes ÷ pasivos corrientes; incluye inventarios, no solo efectivo. Un valor bajo requiere revisar el ciclo de caja y el sector.", "ratio"),
 ]
 PROFITABILITY_FIELDS = [
     ("profitMargins", "Margen neto", "De cada 100 en ventas, cuánto es utilidad real. <5% ajustado, 10-20% saludable, >20% muy rentable.", "pct"),
@@ -89,14 +90,14 @@ RATIO_TREND_FIELDS = {
 }
 TREND_FIELDS = {**DIRECT_TREND_FIELDS, **{k: None for k in RATIO_TREND_FIELDS}}
 CASH_FIELDS = [
-    ("operatingCashflow", "Flujo de caja operativo", "Efectivo que genera el negocio del día a día, antes de gastos de inversión (capex). Si es positivo pero el flujo libre de abajo es negativo, la empresa está invirtiendo fuerte, no quemando caja.", "money"),
-    ("freeCashflow", "Flujo de caja libre", "Lo que le queda después de reinvertir en el negocio (capex). Puede ser negativo en un ciclo de inversión fuerte sin ser alarmante, siempre que el flujo operativo de arriba sea positivo.", "money"),
+    ("operatingCashflow", "Flujo de caja operativo", "Efectivo que genera el negocio del día a día, antes de gastos de inversión (capex). Si el flujo libre es negativo, revisa la inversión y cómo se financia: flujo operativo positivo no elimina el riesgo de caja.", "money"),
+    ("freeCashflow", "Flujo de caja libre", "Lo que le queda después de reinvertir en el negocio (capex). Un valor negativo requiere revisar inversión, liquidez y financiación, aunque el flujo operativo sea positivo.", "money"),
     ("dividendYield", "Dividend yield", "Cuánto reparte en dividendos al año, como % del precio.", "pct"),
     ("payoutRatio", "Payout ratio", "% de la utilidad que destina a dividendos. >80% sostenido es señal de que el dividendo puede estar en riesgo.", "pct"),
 ]
 SIZE_FIELDS = [
-    ("marketCap", "Capitalización de mercado", "Tamaño de la empresa. Large cap = más estable; small cap = más volátil, más potencial y más riesgo.", "money"),
-    ("beta", "Beta", "Qué tan volátil es vs el mercado. 1 se mueve como el mercado; >1.5 se mueve mucho más (para arriba y para abajo).", "ratio"),
+    ("marketCap", "Capitalización de mercado", "Precio por acción × acciones en circulación. Mide valor bursátil, no solvencia ni estabilidad garantizada.", "money"),
+    ("beta", "Beta", "Sensibilidad histórica al mercado de referencia. No mide el riesgo total ni predice movimientos futuros.", "ratio"),
 ]
 
 BLOCKS = [
@@ -109,15 +110,43 @@ BLOCKS = [
 ]
 
 
+def _number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _normalize_info(source: dict) -> dict:
+    """Normalize before presentation and scoring; never guess yield units."""
+    info = dict(source)
+    for _, _, fields in BLOCKS:
+        for field, *_ in fields:
+            info[field] = _number(info.get(field))
+    for field in ("currentPrice", "regularMarketPrice", "targetMeanPrice", "recommendationMean"):
+        info[field] = _number(info.get(field))
+    price = info.get("currentPrice") or info.get("regularMarketPrice")
+    rate = _number(source.get("dividendRate"))
+    # dividendYield has changed units upstream. Annual dividend / price is explicit.
+    info["dividendYield"] = rate / price if rate is not None and rate >= 0 and price and price > 0 else None
+    info["_yield_note"] = "Calculado: dividendo anual indicado ÷ precio actual. No garantiza pagos futuros." if info["dividendYield"] is not None else "Sin dato: falta dividendo anual o precio válido; no se infiere la unidad del rendimiento del proveedor."
+    invalid = set()
+    for field in ("trailingPE", "priceToBook", "trailingPegRatio", "debtToEquity", "payoutRatio"):
+        if info.get(field) is not None and info[field] < 0:
+            invalid.add(field)
+            info[field] = None
+    info["_invalid_metrics"] = invalid
+    return info
+
+
 def _fmt(value, kind: str) -> str | None:
-    if value is None:
+    if _number(value) is None:
         return None
     try:
         if kind == "pct":
             return f"{value * 100:.2f}%"
         if kind == "de_ratio":
             # yfinance ya entrega debtToEquity como porcentaje (78.4 == 78.4%, no 0.784)
-            return f"{value:.1f}"
+            return f"{value:.1f}%"
         if kind == "ratio":
             return f"{value:.2f}"
         if kind == "money":
@@ -184,12 +213,16 @@ def _build_blocks(info: dict) -> list[dict]:
         metrics = []
         for field, label, explanation, kind in fields:
             raw = info.get(field)
+            display = _fmt(raw, kind)
+            if display and kind == "money":
+                currency = info.get("currency" if field == "marketCap" else "financialCurrency")
+                display = display.replace("$", "") + " " + (currency or "(moneda no informada)")
             metrics.append({
                 "key": field,
                 "label": label,
                 "value": raw,
-                "display": _fmt(raw, kind) or "Sin dato",
-                "explanation": explanation,
+                "display": "No interpretable" if field in info.get("_invalid_metrics", set()) else (display or "Sin dato"),
+                "explanation": explanation + (" " + info["_yield_note"] if field == "dividendYield" and "_yield_note" in info else "") + (" El ratio negativo no permite aplicar los umbrales habituales y se excluye del puntaje." if field in info.get("_invalid_metrics", set()) else "") + (" Serie: trimestres individuales; no equivale al valor TTM. En ROE se usa patrimonio al cierre, no promedio." if field in TREND_FIELDS else "") + (" Moneda de los estados: " + str(info.get("financialCurrency") or "no informada") + "." if kind == "money" and field != "marketCap" else ""),
                 "status": _metric_status(field, raw, sector),
                 "trend": info.get("_trends", {}).get(field) if field in TREND_FIELDS else None,
             })
@@ -430,6 +463,8 @@ def _fetch_info(ticker: str) -> dict:
         trends.update({field: _fetch_ratio_trend(t, *spec)
                        for field, spec in RATIO_TREND_FIELDS.items()})
         info["_trends"] = trends
+        from .fundamental_research import fetch_annual
+        info["_annual"] = fetch_annual(t)
     return info
 
 
@@ -442,7 +477,7 @@ def analyze(ticker: str, force: bool = False) -> dict:
             return hit[1]
 
     try:
-        info = _fetch_info(ticker)
+        info = _normalize_info(_fetch_info(ticker))
     except Exception as exc:  # noqa: BLE001 — un ticker roto no debe tumbar la página
         return {"ticker": ticker, "error": str(exc)}
 
@@ -450,7 +485,10 @@ def analyze(ticker: str, force: bool = False) -> dict:
     is_fund = quote_type not in ("EQUITY",)
     price = info.get("currentPrice") or info.get("regularMarketPrice")
 
+    from .fundamental_research import build
+    research = None if is_fund else build(info, ticker)
     result = {
+        "research": research,
         "ticker": ticker,
         "error": None,
         "quote_type": quote_type,

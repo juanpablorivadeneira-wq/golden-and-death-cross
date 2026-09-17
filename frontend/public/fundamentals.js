@@ -196,20 +196,27 @@ function buildTechnicalGauge(score) {
 // tarjeta (antes, un score=7 se pintaba amarillo por posición fija aunque el
 // veredicto real fuera "Comprar"/verde).
 function renderGauge(score, level) {
-  if (score == null) return null;
+  if (score == null || !Number.isFinite(score)) return null;
   const gauge = document.createElement("div"); gauge.className = "sem-gauge";
-  const numbers = document.createElement("div"); numbers.className = "sg-numbers";
-  const cells = document.createElement("div"); cells.className = "sg-cells";
-  for (let i = 1; i <= 10; i++) {
-    const active = i === score;
-    const activeCls = active ? ` active level-${level}` : "";
-    const num = document.createElement("span"); num.className = `sg-num${activeCls}`; num.textContent = i;
-    numbers.append(num);
-    const cell = document.createElement("span"); cell.className = `sg-cell${activeCls}`;
-    cells.append(cell);
+  const heading = document.createElement("div"); heading.className = "score-heading";
+  const label = document.createElement("span"); label.textContent = "Puntuación del modelo";
+  const number = document.createElement("strong"); number.textContent = `${score}/10`;
+  heading.append(label, number);
+  const track = document.createElement("div"); track.className = "score-track";
+  track.setAttribute("role", "meter"); track.setAttribute("aria-label", "Puntuación del modelo");
+  track.setAttribute("aria-valuemin", "1"); track.setAttribute("aria-valuemax", "10"); track.setAttribute("aria-valuenow", String(score));
+  const bands = document.createElement("div"); bands.className = "score-bands";
+  const labels = document.createElement("div"); labels.className = "score-labels";
+  for (let i = 0; i < 5; i++) {
+    const band = document.createElement("span"); band.className = `score-band band-${i}`;
+    const tick = document.createElement("span"); tick.className = `band-${i}`;
+    tick.textContent = `${i * 2 + 1}–${i * 2 + 2}`;
+    bands.append(band); labels.append(tick);
   }
-  gauge.append(numbers, cells);
-  return gauge;
+  const marker = document.createElement("span"); marker.className = "score-marker";
+  marker.style.left = `${Math.max(2, Math.min(98, ((score - 1) / 9) * 100))}%`;
+  marker.setAttribute("aria-hidden", "true");
+  track.append(bands, marker); gauge.append(heading, track, labels); return gauge;
 }
 
 const CONSENSUS_LEGEND = [
@@ -392,6 +399,7 @@ function renderDetail(data) {
     blocksWrap.append(section);
   }
   panel.append(blocksWrap);
+  if (data.research) FundamentalResearch.render(panel, data);
 }
 
 async function addTicker() {

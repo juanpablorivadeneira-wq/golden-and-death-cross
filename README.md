@@ -13,6 +13,13 @@ Además del monitor de cruces, incluye dos páginas más sobre la misma watchlis
 
 Estos semáforos son apoyo para la lectura, no asesoría financiera ni una señal de compra/venta automática.
 
+## Documentación del estado actual
+
+- [Estado del proyecto](ESTADO_DEL_PROYECTO.md): funciones, ejecución, validaciones y pendientes, actualizado al 17 de septiembre de 2026.
+- [Informe de ampliación fundamental](INFORME_ANALISIS_FUNDAMENTAL.md): métricas avanzadas con explicaciones desplegables, histórico anual, calculadora WACC, escenarios editables e informe local descargable.
+
+La sección **Investigación fundamental** está debajo de las métricas básicas. Sus cálculos y generación de informes no consumen tokens de IA. El análisis cualitativo automático con IA no está conectado. Los datos o modelos aún no disponibles se identifican expresamente; el informe detalla los límites.
+
 ## Revisión y alertas
 
 - `SCAN_DAILY=true`: una revisión de lunes a viernes a las 17:00 de Nueva York (ajusta el horario de verano). El servidor debe estar encendido. No consulta continuamente.
@@ -54,11 +61,13 @@ backend/    API, motor de cruces, scheduler, web push, tests
   app/engine.py        medias móviles, cruces (Cross Monitor)
   app/radar200.py      distancia/tendencia a la MA 200 (Radar MA 200)
   app/fundamentals.py  métricas + semáforos vía yfinance (Análisis Fundamental)
+  app/fundamental_research.py métricas avanzadas e histórico anual
   app/technical.py     medidor técnico (medias + osciladores) desde las barras diarias
 frontend/   PWA estática (nginx) con proxy /api → backend
   public/index.html         Cross Monitor
   public/radar200.html      Radar MA 200
   public/fundamentals.html  Análisis Fundamental
+  public/fundamental-research.js calculadoras e informe local
   public/groups.js          grupos de watchlist, compartido por las tres páginas
 scripts/    generate_vapid.py (claves push), generate_icons.py (íconos), run_local.py (dev sin Docker)
 desktop/    app_entry.py — punto de entrada del ejecutable portable de Windows
@@ -113,7 +122,9 @@ Todos los endpoints exigen el header `X-Auth-Token` excepto `/api/health`.
 | POST | /api/watchlist/groups/{name}/move | Reordenar grupo (`direction`: up/down) |
 | GET | /api/quotes/{ticker}/ohlc | OHLC 5 años + MAs + cruces históricos |
 | GET | /api/radar200 | Distancia/tendencia a la MA 200 de toda la watchlist, o detalle de un ticker (`?ticker=`) |
-| GET | /api/fundamentals/{ticker} | Métricas + los 4 semáforos (`?refresh=true` fuerza recálculo, evita la caché de 5 min) |
+| GET | /api/fundamentals/{ticker} | Métricas, 4 semáforos e investigación anual (`research`); `?refresh=true` fuerza recálculo, evita la caché de 5 min |
+| GET | /api/alerts | Historial persistente de alertas |
+| POST | /api/scan | Ejecutar revisión manual de la watchlist |
 | GET/PUT | /api/settings | Tipo de MA (ema/sma) y períodos |
 | GET | /api/push/vapid-public-key | Clave pública para suscribirse |
 | POST | /api/push/subscribe | Registrar suscripción push |
@@ -185,7 +196,8 @@ HTTPS es obligatorio: iOS solo permite service workers y push sobre HTTPS.
 | VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY | — | Claves Web Push (`scripts/generate_vapid.py`) |
 | VAPID_CLAIM_EMAIL | admin@example.com | Contacto del claim VAPID |
 | TWELVE_DATA_KEY | vacío | Si se define, se usa Twelve Data en vez de Yahoo |
-| SCAN_INTERVAL_MIN | 15 | Minutos entre escaneos de la watchlist |
+| SCAN_DAILY | true | Revisión de lunes a viernes a las 17:00 de Nueva York |
+| SCAN_INTERVAL_MIN | 0 | Intervalo adicional desactivado; solo aplica con SCAN_DAILY=false |
 | SCAN_MARKET_HOURS_ONLY | false | Solo escanear lun-vie 13-22 UTC |
 
 ## Decisiones
