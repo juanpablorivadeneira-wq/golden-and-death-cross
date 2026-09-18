@@ -246,16 +246,18 @@ function renderGauge(score, level) {
 }
 
 const CONSENSUS_LEGEND = [
+  ["strong_buy", "Comprar fuerte", "green"],
   ["buy", "Comprar", "green"],
   ["hold", "Mantener", "yellow"],
   ["sell", "Vender", "red"],
+  ["strong_sell", "Vender fuerte", "red"],
 ];
 
 function buildConsensusRing(breakdown) {
-  const { buy = 0, hold = 0, sell = 0 } = breakdown;
-  const total = buy + hold + sell;
+  const { strong_buy = 0, buy = 0, hold = 0, sell = 0, strong_sell = 0 } = breakdown;
+  const total = strong_buy + buy + hold + sell + strong_sell;
   if (!total) return null;
-  const buyPct = (buy / total) * 100;
+  const buyPct = ((strong_buy + buy) / total) * 100;
   const holdPct = (hold / total) * 100;
   const ring = document.createElement("div"); ring.className = "consensus-ring";
   ring.style.background = `conic-gradient(var(--ok) 0 ${buyPct}%, var(--gold) ${buyPct}% ${buyPct + holdPct}%, var(--death) ${buyPct + holdPct}% 100%)`;
@@ -279,7 +281,34 @@ function buildConsensusLegend(breakdown) {
   return legend;
 }
 
-function renderSemaphore(container, title, sem, detailText, customVisual) {
+const TARGET_RANGE_ROWS = [
+  ["target_low", "Bajo"],
+  ["target_price", "Prom"],
+  ["target_high", "Alto"],
+];
+
+// Fila Bajo/Prom/Alto con su % vs. precio actual, estilo Finviz -- cada
+// target se compara contra el precio de hoy, no solo el promedio (que ya se
+// muestra arriba en el veredicto grande de la tarjeta).
+function buildTargetRange(tp, price) {
+  if (!price || tp.target_low == null || tp.target_high == null) return null;
+  const wrap = document.createElement("div"); wrap.className = "target-range";
+  for (const [key, label] of TARGET_RANGE_ROWS) {
+    const target = tp[key];
+    if (target == null) continue;
+    const pct = target / price - 1;
+    const row = document.createElement("div"); row.className = "target-range-row";
+    const lbl = document.createElement("span"); lbl.className = "trr-label"; lbl.textContent = label;
+    const val = document.createElement("span"); val.className = "trr-value"; val.textContent = `$${target.toFixed(2)}`;
+    const pctEl = document.createElement("span"); pctEl.className = `trr-pct ${pct >= 0 ? "pos" : "neg"}`;
+    pctEl.textContent = `${pct >= 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`;
+    row.append(lbl, val, pctEl);
+    wrap.append(row);
+  }
+  return wrap;
+}
+
+function renderSemaphore(container, title, sem, detailText, customVisual, extra) {
   const level = SEM_LEVELS.includes(sem.level) ? sem.level : "none";
   const art = document.createElement("article"); art.className = `semaphore ${level}`;
   const label = document.createElement("span"); label.className = "semaphore-label"; label.textContent = title;
@@ -301,7 +330,9 @@ function renderSemaphore(container, title, sem, detailText, customVisual) {
     const gauge = renderGauge(sem.score, level);
     if (gauge) art.append(gauge);
   }
+  if (extra) art.append(extra);
   container.append(art);
+  return art;
 }
 
 async function selectTicker(ticker, force) {
@@ -380,7 +411,8 @@ function renderDetail(data) {
   const tech = data.semaphores.technical;
   renderSemaphore(sems, "Salud Fundamental", health, health.detail || "");
   renderSemaphore(sems, "Consenso de Analistas", ac, ac.analysts ? `${ac.analysts} analista${ac.analysts === 1 ? "" : "s"}` : "");
-  renderSemaphore(sems, "Precio Objetivo", tp, tp.target_price != null ? `Objetivo promedio: ${tp.target_price.toFixed(2)}` : "");
+  const tpDetail = tp.target_price != null ? `Objetivo promedio: ${tp.target_price.toFixed(2)}` : "";
+  renderSemaphore(sems, "Precio Objetivo", tp, tpDetail, null, buildTargetRange(tp, data.price));
   if (tech) {
     const detail = tech.moving_averages && tech.oscillators
       ? `Medias: ${tech.moving_averages.label} · Osciladores: ${tech.oscillators.label}`

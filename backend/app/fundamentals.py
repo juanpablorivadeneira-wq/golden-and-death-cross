@@ -122,7 +122,8 @@ def _normalize_info(source: dict) -> dict:
     for _, _, fields in BLOCKS:
         for field, *_ in fields:
             info[field] = _number(info.get(field))
-    for field in ("currentPrice", "regularMarketPrice", "targetMeanPrice", "recommendationMean"):
+    for field in ("currentPrice", "regularMarketPrice", "targetMeanPrice", "targetLowPrice",
+                  "targetHighPrice", "recommendationMean"):
         info[field] = _number(info.get(field))
     price = info.get("currentPrice") or info.get("regularMarketPrice")
     rate = _number(source.get("dividendRate"))
@@ -373,7 +374,15 @@ def _target_price(info: dict) -> dict:
         level = "yellow"
     # -30% de potencial o peor -> 1; +30% o mejor -> 10.
     score_10 = clamp(round((clamp(upside, -0.30, 0.30) + 0.30) / 0.60 * 10), 1, 10)
-    return {"level": level, "label": f"{upside * 100:+.1f}% vs. objetivo", "upside_pct": upside, "target_price": target, "score": score_10}
+    return {
+        "level": level,
+        "label": f"{upside * 100:+.1f}% vs. objetivo",
+        "upside_pct": upside,
+        "target_price": target,
+        "target_low": info.get("targetLowPrice"),
+        "target_high": info.get("targetHighPrice"),
+        "score": score_10,
+    }
 
 
 def _fetch_recommendations_breakdown(t) -> dict | None:
@@ -392,12 +401,20 @@ def _fetch_recommendations_breakdown(t) -> dict | None:
             # presentado como si fuera actual.
             return None
         row = row.iloc[0]
-        buy = int(row["strongBuy"]) + int(row["buy"])
+        strong_buy = int(row["strongBuy"])
+        buy = int(row["buy"])
         hold = int(row["hold"])
-        sell = int(row["sell"]) + int(row["strongSell"])
-        if buy + hold + sell == 0:
+        sell = int(row["sell"])
+        strong_sell = int(row["strongSell"])
+        if strong_buy + buy + hold + sell + strong_sell == 0:
             return None
-        return {"buy": buy, "hold": hold, "sell": sell}
+        return {
+            "strong_buy": strong_buy,
+            "buy": buy,
+            "hold": hold,
+            "sell": sell,
+            "strong_sell": strong_sell,
+        }
     except Exception:  # noqa: BLE001 — el desglose es un plus, nunca debe tumbar la página
         return None
 

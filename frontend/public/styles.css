@@ -198,6 +198,14 @@
 .consensus-dot.level-yellow { background:var(--gold); }
 .consensus-dot.level-red { background:var(--death); }
 
+.target-range { display:flex; flex-direction:column; gap:3px; margin-top:6px; }
+.target-range-row { display:flex; align-items:baseline; gap:6px; font-size:11px; }
+.trr-label { color:var(--muted); width:32px; flex-shrink:0; }
+.trr-value { font-weight:600; color:var(--text); }
+.trr-pct { margin-left:auto; font-weight:600; }
+.trr-pct.pos { color:var(--ok); }
+.trr-pct.neg { color:var(--death); }
+
 .fundamentals main { align-items:start; height:auto; }
 .fund-panel { border:1px solid var(--line); background:var(--panel); border-radius:12px; overflow:hidden; min-width:0; }
 .fund-detail { overflow:visible; }

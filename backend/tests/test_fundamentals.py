@@ -65,6 +65,16 @@ def test_analyze_normal_equity():
     assert result["semaphores"]["target_price"]["level"] == "green"  # (230/200-1)=15% > 10%
 
 
+def test_target_price_includes_low_and_high():
+    info = full_info(targetLowPrice=180.0, targetHighPrice=260.0)
+    with patch.object(fundamentals, "_fetch_info", return_value=info):
+        result = fundamentals.analyze("AAPL")
+    tp = result["semaphores"]["target_price"]
+    assert tp["target_low"] == 180.0
+    assert tp["target_high"] == 260.0
+    assert tp["target_price"] == 230.0
+
+
 def test_analyze_etf_has_no_metrics():
     with patch.object(fundamentals, "_fetch_info", return_value={"quoteType": "ETF"}):
         result = fundamentals.analyze("QQQ")
@@ -89,10 +99,10 @@ def test_analyze_partial_data_missing_debt_fields():
 
 def test_analyze_analyst_breakdown_passthrough():
     info = full_info()
-    info["_recommendations_breakdown"] = {"buy": 25, "hold": 13, "sell": 6}
+    info["_recommendations_breakdown"] = {"strong_buy": 10, "buy": 15, "hold": 13, "sell": 5, "strong_sell": 1}
     with patch.object(fundamentals, "_fetch_info", return_value=info):
         result = fundamentals.analyze("AAPL")
-    assert result["semaphores"]["analyst_consensus"]["breakdown"] == {"buy": 25, "hold": 13, "sell": 6}
+    assert result["semaphores"]["analyst_consensus"]["breakdown"] == {"strong_buy": 10, "buy": 15, "hold": 13, "sell": 5, "strong_sell": 1}
 
 
 def test_analyze_analyst_count_matches_breakdown_total_when_available():
@@ -102,7 +112,7 @@ def test_analyze_analyst_count_matches_breakdown_total_when_available():
     # se contradicen visualmente en la misma tarjeta. Debe mostrarse un solo
     # número, el mismo que suman las barras del anillo.
     info = full_info(numberOfAnalystOpinions=14)
-    info["_recommendations_breakdown"] = {"buy": 3, "hold": 13, "sell": 0}
+    info["_recommendations_breakdown"] = {"strong_buy": 1, "buy": 2, "hold": 13, "sell": 0, "strong_sell": 0}
     with patch.object(fundamentals, "_fetch_info", return_value=info):
         result = fundamentals.analyze("HIMS")
     assert result["semaphores"]["analyst_consensus"]["analysts"] == 16
@@ -118,7 +128,7 @@ def test_fetch_recommendations_breakdown_aggregates_current_period():
         ])
 
     result = fundamentals._fetch_recommendations_breakdown(FakeTicker())
-    assert result == {"buy": 25, "hold": 10, "sell": 3}  # strongBuy+buy, hold, sell+strongSell del período "0m"
+    assert result == {"strong_buy": 5, "buy": 20, "hold": 10, "sell": 2, "strong_sell": 1}  # período "0m", sin colapsar
 
 
 def test_fetch_recommendations_breakdown_handles_missing_data():
@@ -285,10 +295,10 @@ def test_fetch_info_fetches_breakdown_for_equity():
         info = {"quoteType": "EQUITY", "symbol": "AAPL"}
 
     with patch("yfinance.Ticker", return_value=FakeTicker()), \
-         patch.object(fundamentals, "_fetch_recommendations_breakdown", return_value={"buy": 1, "hold": 0, "sell": 0}) as mock_breakdown:
+         patch.object(fundamentals, "_fetch_recommendations_breakdown", return_value={"strong_buy": 0, "buy": 1, "hold": 0, "sell": 0, "strong_sell": 0}) as mock_breakdown:
         info = fundamentals._fetch_info("AAPL")
     mock_breakdown.assert_called_once()
-    assert info["_recommendations_breakdown"] == {"buy": 1, "hold": 0, "sell": 0}
+    assert info["_recommendations_breakdown"] == {"strong_buy": 0, "buy": 1, "hold": 0, "sell": 0, "strong_sell": 0}
 
 
 def test_analyze_no_analyst_coverage():
