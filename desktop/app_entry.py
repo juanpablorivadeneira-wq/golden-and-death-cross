@@ -54,6 +54,16 @@ def build_app():
     from app.main import app
     from fastapi.staticfiles import StaticFiles
 
+    @app.middleware("http")
+    async def no_cache_static(request, call_next):
+        # StaticFiles no manda Cache-Control por su cuenta: sin esto, el
+        # navegador puede quedarse indefinidamente con un HTML/JS viejo y un
+        # cambio de código nunca llega aunque el .exe ya esté actualizado.
+        response = await call_next(request)
+        if not request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     app.mount("/", StaticFiles(directory=frontend_dir(), html=True), name="static")
     return app
 

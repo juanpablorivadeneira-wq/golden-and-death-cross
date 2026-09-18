@@ -640,7 +640,14 @@ async function main() {
     logAlert("No se pudo conectar al servidor. Vuelve a cargar la página.");
   }
   const saved = await idbGet("token").catch(() => null);
-  if (saved && await tryLogin(saved)) return;
+  // En 127.0.0.1/localhost (servidor local o .exe portátil) el token no
+  // protege de nadie -- es el mismo "dev-token" fijo del código fuente, no
+  // un secreto. Se prueba solo para no mostrarle esa pantalla a quien usa
+  // la app en su propia PC; en un despliegue remoto (dominio real detrás
+  // de Cloudflare Tunnel) esto no aplica y el login sigue exigiéndose.
+  const isLocalHost = location.hostname === "127.0.0.1" || location.hostname === "localhost";
+  const candidate = saved || (isLocalHost ? "dev-token" : null);
+  if (candidate && await tryLogin(candidate)) return;
   showAuth();
 }
 

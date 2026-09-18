@@ -97,6 +97,18 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass  # el log de uvicorn ya es suficiente
 
+    def end_headers(self):
+        # Sin esto, el navegador puede quedarse indefinidamente con una copia
+        # vieja del HTML/JS (SimpleHTTPRequestHandler no manda Cache-Control),
+        # así que un cambio de código nunca llega aunque el archivo en disco
+        # ya esté actualizado. nginx (despliegue Docker) ya hace esto mismo.
+        # Solo estáticos: _proxy() ya reenvía los headers tal cual los manda
+        # el backend, así que agregar esto acá también duplicaría el header
+        # si algún endpoint llegara a mandar su propio Cache-Control.
+        if not self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
 
 def main() -> None:
     load_dotenv()
