@@ -14,6 +14,7 @@ SCAN_INTERVAL_MIN, SCAN_MARKET_HOURS_ONLY. Si existe un archivo .env en la
 raíz del repo, se carga automáticamente.
 """
 import os
+import re
 import sys
 import threading
 import urllib.error
@@ -82,8 +83,59 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"detail":"Backend no disponible"}')
 
+    def _serve_range(self) -> bool:
+        """Responde 206 a un único rango `bytes=a-b` sobre un archivo estático.
+
+        SimpleHTTPRequestHandler ignora Range y siempre manda el archivo
+        entero; con eso un <video> reproduce desde el principio pero no se
+        puede adelantar. nginx y el StaticFiles del .exe ya soportan rangos.
+        """
+        m = re.fullmatch(r"bytes=(\d*)-(\d*)", self.headers.get("Range", "").strip())
+        if not m or m.groups() == ("", ""):
+            return False
+        path = self.translate_path(self.path)
+        if not os.path.isfile(path):
+            return False
+        size = os.path.getsize(path)
+        first, last = m.groups()
+        if first == "":  # sufijo: los últimos N bytes
+            start, end = max(0, size - int(last)), size - 1
+        else:
+            start, end = int(first), min(int(last), size - 1) if last else size - 1
+        if start > end and first and last and int(first) > int(last):
+            return False  # rango mal formado (bytes=500-100): se ignora y va el archivo entero
+        if start >= size or start > end:
+            self.send_response(416)
+            self.send_header("Content-Range", f"bytes */{size}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        length = end - start + 1
+        self.send_response(206)
+        self.send_header("Content-Type", self.guess_type(path))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Length", str(length))
+        # Para que el navegador no mezcle trozos si el archivo se reemplaza con la pestaña abierta.
+        self.send_header("Last-Modified", self.date_time_string(int(os.path.getmtime(path))))
+        self.end_headers()
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(start)
+                while length > 0:
+                    chunk = fh.read(min(256 * 1024, length))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    length -= len(chunk)
+        except ConnectionError:
+            pass  # el navegador corta la descarga al adelantar el video: es normal
+        return True
+
     def do_GET(self):
-        (self._proxy() if self.path.startswith("/api/") else super().do_GET())
+        if self.path.startswith("/api/"):
+            self._proxy()
+        elif not self._serve_range():
+            super().do_GET()
 
     def do_POST(self):
         self._proxy()
@@ -107,6 +159,7 @@ class Handler(SimpleHTTPRequestHandler):
         # si algún endpoint llegara a mandar su propio Cache-Control.
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-cache")
+            self.send_header("Accept-Ranges", "bytes")
         super().end_headers()
 
 

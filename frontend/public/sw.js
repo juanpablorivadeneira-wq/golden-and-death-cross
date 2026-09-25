@@ -4,7 +4,7 @@
 // - notificaciones push del servidor
 "use strict";
 
-const CACHE = "cross-monitor-v9";
+const CACHE = "cross-monitor-v10";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -48,6 +48,11 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(event.request));
     return;
   }
+
+  // Videos: el navegador los pide por rangos (206) y Cache.put rechaza las
+  // respuestas parciales -- el catch de abajo terminaría devolviendo un 503.
+  // Tampoco conviene guardar decenas de MB: se dejan pasar directo a la red.
+  if (url.pathname.startsWith("/media/") || event.request.headers.has("range")) return;
 
   // Obtener la versión vigente al abrir; no revalidar en segundo plano.
   event.respondWith((async () => {

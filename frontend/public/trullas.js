@@ -20,7 +20,7 @@ const $ = id => document.getElementById(id);
 const GROUPS_PAGE_KEY = "trullas";
 const LOGIN_MSG = "Abre Cross Monitor para iniciar sesión y vuelve a esta pestaña.";
 const COLORS = { s200: "#3b82f6", s70: "#ef4444", s6: "#22c55e", ray: "#e7c46a", t66: "#e7c46a", t618: "#c084fc",
-  abs: "#8e9dac", k: "#e5eaf1", d: "#e7c46a" };
+  abs: "#8e9dac", half: "#5fb3c9", k: "#e5eaf1", d: "#e7c46a" };
 
 const SIGNAL = { buy: ["Compra", "golden"], sell: ["Venta", "death"], wait: ["Espera", ""] };
 const TREND = { bullish: ["Alcista", "golden"], bearish: ["Bajista", "death"], neutral: ["Lateral", ""] };
@@ -333,7 +333,8 @@ function plot(detail) {
     tr.series.proj.setData([{ time: div.p2.t, value: div.p2.price }, { time: bars[bars.length - 1].t, value: div.target66 }]);
     if (div.p1.stoch != null && div.p2.stoch != null) tr.series.stochRay.setData([{ time: div.p1.t, value: div.p1.stoch }, { time: div.p2.t, value: div.p2.stoch }]);
     const pl = (price, color, title, lineStyle = 2) => tr.series.candles.createPriceLine({ price, color, title, lineWidth: 1, lineStyle, axisLabelVisible: true });
-    tr.priceLines.push(pl(div.target66, COLORS.t66, "66% Dow", 0), pl(div.target618, COLORS.t618, "61,8% Fib"), pl(div.absolute.price, COLORS.abs, "Absoluto", 3));
+    tr.priceLines.push(pl(div.target66, COLORS.t66, "66% Dow", 0), pl(div.target618, COLORS.t618, "61,8% Fib"),
+      pl(div.target50, COLORS.half, "50%"), pl(div.absolute.price, COLORS.abs, "Absoluto", 3));
   }
   if (detail.volatility.stop != null) {
     tr.priceLines.push(tr.series.candles.createPriceLine({ price: detail.volatility.stop, color: "#ee8791", lineWidth: 1, lineStyle: 1,
@@ -430,8 +431,9 @@ function renderDiagnosis(d) {
     ["Rango (Abs − P2)", px(target.range)],
     ["Objetivo 66% Dow", `${px(target.target66)} · ${pct((target.target66 / d.price - 1) * 100)}`, "gold"],
     ["Objetivo 61,8% Fib", `${px(target.target618)} · ${pct((target.target618 / d.price - 1) * 100)}`, "fib"],
+    ["Nivel 50%", `${px(target.target50)} · ${pct((target.target50 / d.price - 1) * 100)}`],
   ] : [["Estado", "Requiere una divergencia activa entre P1 y P2"]],
-  target ? "Distancias medidas desde el último precio. En el gráfico: rayo P1→P2, proyección hacia el 66% y líneas horizontales." : null));
+  target ? "El 66% es la zona de salida del método; en el 50% el precio también puede frenarse antes. Distancias desde el último precio." : null));
 
   // 5. Volatilidad
   const v = d.volatility;
@@ -500,6 +502,90 @@ $("method-video").addEventListener("toggle", e => {
   if (e.target.open) { if (!frame.src) frame.src = frame.dataset.src; }
   else frame.removeAttribute("src");
 });
+
+// Resumen de NotebookLM (archivo local): mismo criterio que el directo, se
+// descarga al abrir y se pausa al cerrar para que no siga sonando oculto.
+$("nlm-video").addEventListener("toggle", e => {
+  const video = e.target.querySelector("video");
+  if (!video) return; // ya se reemplazó por el aviso de archivo ausente
+  if (e.target.open) { if (!video.getAttribute("src")) video.src = video.dataset.src; }
+  else video.pause();
+});
+// El video no está en el repositorio (.gitignore): en otra PC, Docker o el
+// .exe compilado en GitHub falta, y se avisa en vez de dejar un reproductor vacío.
+// Solo si nunca llegó a cargar nada: un corte de red a mitad de la reproducción
+// (PC suspendida, servidor reiniciado) no debe hacer desaparecer el reproductor.
+$("nlm-video").querySelector("video").addEventListener("error", e => {
+  if (e.target.readyState !== HTMLMediaElement.HAVE_NOTHING) return;
+  const note = el("p", "video-missing", "El video no está en esta instalación. Copia el MP4 descargado de NotebookLM a ");
+  note.append(el("code", null, "frontend/public/media/metodologia-david-trullas.mp4"), document.createTextNode(" y recarga la página."));
+  e.target.closest(".video-frame").replaceWith(note);
+});
+
+// Índice del directo, armado a partir de su transcripción automática. El
+// tercer campo es la tarjeta del diagnóstico que aplica ese tramo; el resto
+// es contexto (preguntas, order flow, presentación de su escuela).
+const VIDEO_INDEX = [
+  ["10:00", "Bienvenida y formato de la masterclass"],
+  ["13:00", "Presentación: metodologías registradas en EE. UU. y cinco World Cup de day trading"],
+  ["18:00", "No hay fórmulas mágicas: aprender a leer el mercado (estructura y función)"],
+  ["20:00", "Top-down: elegir los sectores más fuertes y más débiles a nivel mundial", 1],
+  ["22:00", "Tendencia del mercado: S&P 500, Nasdaq y Euro Stoxx 50", 1],
+  ["24:30", "Medias simples 200 / 70 / 6: condiciones, entrada y salida (Repsol)", 2],
+  ["27:00", "Ejemplos por sector: Intel, Ball Corp descartada, Iberdrola, Goodyear y Fox", 1],
+  ["32:00", "Casos del público: Nasdaq (70 bajo 200 invalida), Netflix y Nvidia lateral", 2],
+  ["36:00", "Divergencia de volumen en mínimos (eurodólar 6E) y máximo absoluto", 3],
+  ["38:00", "Retroceso al 66 % (2/3 de Dow) y el 50 %", 4],
+  ["40:00", "Divergencia bajista de volumen en Nvidia y el 61,8 % de Fibonacci", 4],
+  ["42:30", "Estocástico 14-3-5: divergencias en oro y plata", 3],
+  ["45:30", "Primero la estructura, después el order flow"],
+  ["47:00", "En directo: NQ 5 min, hueco de apertura y sus operaciones reales del campeonato", 4],
+  ["51:30", "Más casos: oro 5 min, Nvidia 1 h y eurodólar 15 min", 4],
+  ["56:00", "Order flow: big trades («bolitas de Navidad»)"],
+  ["57:30", "Footprint: bid/ask y rastro de las manos fuertes"],
+  ["59:30", "Lectura del precio en vivo: plan A y B, órdenes límite como imán, spoofing"],
+  ["68:30", "Multi-temporalidad: del diario a 30 s; capital según el marco temporal", 5],
+  ["70:30", "Plataformas (TradingView, ATAS) y presentación de su escuela"],
+  ["76:30", "Preguntas: horario de operación"],
+  ["78:00", "El 66 % como zona de salida", 4],
+  ["79:00", "Divergencia = estructura; footprint = función"],
+  ["80:30", "Dónde colocar el stop loss", 5],
+  ["81:00", "Brokers y mercado regulado; cuidado con CFD y Forex offshore"],
+  ["84:00", "Gestión del capital: del 2 % al 7 % según la fuerza de la señal", 5],
+  ["86:00", "Por qué las medias 6, 70 y 200", 2],
+  ["88:00", "Cómo saber qué acciones son de sector fuerte; tipos de gaps; apalancamiento", 1],
+  ["94:00", "Rollover de futuros, falsas señales de big trades y cómo confirmar el segundo mínimo"],
+  ["99:30", "¿Divergencia mayor, corrección mayor? Horarios y tiempo frente a la pantalla", 3],
+  ["103:30", "¿Funciona en Bitcoin? La clave es la liquidez"],
+  ["105:00", "Cierre"],
+];
+const toSeconds = t => t.split(":").reduce((acc, part) => acc * 60 + Number(part), 0);
+const clock = sec => `${Math.floor(sec / 3600)}:${String(Math.floor(sec % 3600 / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+function renderVideoIndex() {
+  const details = $("method-video");
+  const frame = details.querySelector("iframe");
+  for (const [time, label, cardNo] of VIDEO_INDEX) {
+    const sec = toSeconds(time);
+    const btn = el("button", "vi-item");
+    btn.type = "button";
+    btn.append(el("span", "vi-time", clock(sec)), el("span", "vi-label", label));
+    if (cardNo) {
+      const tag = el("span", "vi-card", `Tarjeta ${cardNo}`);
+      tag.title = "Tarjeta del diagnóstico que aplica este tramo";
+      btn.append(tag);
+    }
+    btn.addEventListener("click", () => {
+      // El src ya queda puesto, así que el toggle al abrir no lo pisa.
+      frame.src = `${frame.dataset.src}&start=${sec}&autoplay=1`;
+      details.open = true;
+      frame.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const li = el("li");
+    li.append(btn);
+    $("video-index").append(li);
+  }
+}
+renderVideoIndex();
 
 async function main() {
   createCharts();

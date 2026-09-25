@@ -12,3 +12,7 @@ node_modules/
 # Build del .exe portátil (PyInstaller) — el binario final se distribuye, no se commitea.
 build/
 dist/
+
+# Videos locales (p. ej. el resumen de NotebookLM de la pestaña David Trullás):
+# pesan decenas de MB y se quedan solo en esta PC, fuera del repositorio.
+frontend/public/media/

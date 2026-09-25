@@ -3,12 +3,14 @@
 Cuatro módulos independientes calculados sobre las velas OHLCV:
 
 A. Medias SMA 200 (macro), SMA 70 (intermedia) y SMA 6 (gatillo). Largo si la
-   200 y la 70 suben y la 70 está sobre la 200; corto si ambas bajan. La señal
+   200 y la 70 suben y la 70 está sobre la 200; corto si ambas bajan y la 70
+   está bajo la 200 (espejo del largo, como en su ejemplo de Netflix). La señal
    la da la posición/cruce de la SMA 6 respecto de la SMA 70.
 B. Pivotes (fractales) y divergencias de volumen y de estocástico lento
    (14, 3, 5) entre los dos últimos máximos o mínimos.
 C. Proyección del retroceso: 66 % (2/3, Teoría de Dow) y 61,8 % (Fibonacci)
-   del impulso entre el extremo absoluto entre P1 y P2 y el propio P2.
+   del impulso entre el extremo absoluto entre P1 y P2 y el propio P2, más
+   el 50 % como zona donde el precio también puede frenarse.
 D. ATR(14) de Wilder y stop sugerido a N ATR.
 
 Además, un filtro top-down (mercado → sector → activo) en velas diarias y la
@@ -37,7 +39,7 @@ ATR_PERIOD = 14
 DEFAULT_ATR_MULT = 2.0
 RS_LOOKBACK = 63          # ~3 meses de sesiones
 RS_THRESHOLD_PP = 3.0     # puntos porcentuales para Fuerte / Débil
-DOW_RATIO, FIB_RATIO = 0.66, 0.618
+DOW_RATIO, FIB_RATIO, HALF_RATIO = 0.66, 0.618, 0.5
 MIN_BARS = SMA_MACRO + SLOPE_LOOKBACK + 1
 
 SECTOR_ETF = {
@@ -99,7 +101,8 @@ def sma_module(bars: list[Bar]) -> dict:
         last_cross["t"] = bars[last_cross["index"]].t
     long_setup = bool(slope200 is not None and slope70 is not None and slope200 > 0
                       and slope70 > 0 and s70[-1] > s200[-1])
-    short_setup = bool(slope200 is not None and slope70 is not None and slope200 < 0 and slope70 < 0)
+    short_setup = bool(slope200 is not None and slope70 is not None and slope200 < 0
+                       and slope70 < 0 and s70[-1] < s200[-1])
     trigger_above = s6[-1] > s70[-1]
     fresh = bool(last_cross and last_cross["bars_ago"] < FRESH_SIGNAL_BARS)
     if long_setup and trigger_above:
@@ -118,7 +121,7 @@ def sma_module(bars: list[Bar]) -> dict:
         note = "Salida de cortos: la SMA 6 está sobre la SMA 70. Esperar un nuevo cruce bajista."
     else:
         signal = "wait"
-        note = "Medias sin estructura de tendencia: la 200 y la 70 no acompañan en la misma dirección."
+        note = "Medias sin estructura de tendencia: la 200 y la 70 no acompañan en la misma dirección o la 70 está del lado equivocado de la 200."
     return {"signal": signal, "fresh": fresh, "note": note,
             "long_setup": long_setup, "short_setup": short_setup,
             "sma200": s200[-1], "sma70": s70[-1], "sma6": s6[-1],
@@ -205,6 +208,7 @@ def _evaluate_pair(bars, stoch_k, p1, p2, kind) -> dict | None:
         "range": rango,
         "target66": p2_price + DOW_RATIO * rango,
         "target618": p2_price + FIB_RATIO * rango,
+        "target50": p2_price + HALF_RATIO * rango,
         "bars_ago": len(bars) - 1 - p2,
     }
 

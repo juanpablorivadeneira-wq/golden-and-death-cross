@@ -82,7 +82,8 @@ def test_divergencia_bajista_de_volumen_y_retroceso():
     assert result["range"] == pytest.approx(rango)
     assert result["target66"] == pytest.approx(p2 + 0.66 * rango)
     assert result["target618"] == pytest.approx(p2 + 0.618 * rango)
-    assert result["target66"] < result["target618"] < p2
+    assert result["target50"] == pytest.approx(p2 + 0.5 * rango)
+    assert result["target66"] < result["target618"] < result["target50"] < p2
 
 
 def test_sin_divergencia_si_el_volumen_confirma():
@@ -159,3 +160,13 @@ def test_endpoint_lista_y_detalle(tmp_db):
         assert d["relative_strength"]["benchmark"] in ("XLK", "SPY", None)
         assert "bars" in d and "series" in d
     assert client.get("/api/trullas?interval=15m", headers=headers).status_code == 422
+
+
+
+def test_corto_exige_70_bajo_200():
+    # Caída tras una subida: la 200 y la 70 ya bajan, pero la 70 sigue sobre
+    # la 200 -> todavía no hay estructura corta (Trullás pide la 70 debajo).
+    closes = [100.0] * 200 + trend_series(60, 100, 200) + [90.0] * 8
+    sma = trullas.sma_module(make_bars(closes))
+    assert sma["slope200"] < 0 and sma["slope70"] < 0 and sma["sma70"] > sma["sma200"]
+    assert not sma["short_setup"] and sma["signal"] == "wait"

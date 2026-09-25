@@ -69,6 +69,9 @@ Detalles, fórmulas y límites: [Informe de análisis fundamental](INFORME_ANALI
 - Velas diarias, de 5 minutos (60 días) o de 1 minuto (7 días). El filtro top-down y la fuerza relativa siempre usan velas diarias.
 - Cinco tarjetas: filtro top-down (mercado, sector, activo), señal de medias (Compra / Venta / Espera), divergencias de volumen y estocástico, objetivo de retroceso y ATR(14) con stop a 1,5, 2 o 3 ATR.
 - Se usa la divergencia alcista clásica: un mínimo más bajo con menos volumen indica menor presión vendedora.
+- Reglas contrastadas con la transcripción del directo de Trullás: corto solo si la SMA 70 también está bajo la SMA 200, y el retroceso del 50 % se marca junto al 66 % y el 61,8 %.
+- Video del directo al final de la página, plegable, con un índice de 32 tramos armado desde su transcripción automática; cada tramo salta a su minuto e indica qué tarjeta del diagnóstico explica.
+- Resumen en video preparado con NotebookLM (`frontend/public/media/metodologia-david-trullas.mp4`, 6 min 37 s), plegable. El MP4 no se sube al repositorio (`.gitignore`): existe solo en la PC donde se copió, y si falta la página indica dónde colocarlo. El servidor local (`run_local.py`) atiende peticiones por rango para poder adelantarlo, y el service worker deja pasar `/media/` sin guardarlo en caché.
 - No hay datos Level-2 ni footprint: el order flow se declara no disponible y se muestra el volumen relativo como aproximación.
 
 Son reglas heurísticas del proyecto, no una réplica certificada del método ni asesoría financiera.
