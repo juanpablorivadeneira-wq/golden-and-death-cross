@@ -493,6 +493,14 @@ document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => {
   setRange();
 });
 
+// El video solo se carga al abrir el desplegable (no consume datos mientras
+// está cerrado) y se descarga al cerrarlo, para que no siga sonando oculto.
+$("method-video").addEventListener("toggle", e => {
+  const frame = e.target.querySelector("iframe");
+  if (e.target.open) { if (!frame.src) frame.src = frame.dataset.src; }
+  else frame.removeAttribute("src");
+});
+
 async function main() {
   createCharts();
   // Igual que Cross Monitor: en la propia PC el token de desarrollo no protege
