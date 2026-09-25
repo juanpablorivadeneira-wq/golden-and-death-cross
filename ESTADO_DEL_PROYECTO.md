@@ -4,7 +4,7 @@ Revisión: 17 de septiembre de 2026. Base histórica: `b9bb41a`, más cambios lo
 
 ## Qué es
 
-Una aplicación de seguimiento de acciones con tres vistas conectadas por un menú superior. Comparte una lista de símbolos y grupos guardados en SQLite. Su propósito es reunir señales de medias móviles, distancia a la tendencia y datos fundamentales en una interfaz compacta.
+Una aplicación de seguimiento de acciones con cuatro vistas conectadas por un menú superior. Comparte una lista de símbolos y grupos guardados en SQLite. Su propósito es reunir señales de medias móviles, distancia a la tendencia y datos fundamentales en una interfaz compacta.
 
 La aplicación calcula indicadores con código convencional. No necesita modelos de inteligencia artificial ni consume tokens de IA durante su funcionamiento. Las consultas a los proveedores de mercado son independientes del uso de un asistente para desarrollar el proyecto.
 
@@ -61,7 +61,19 @@ El informe cualitativo autónomo con IA no está conectado. Altman Z-Score, prev
 
 Detalles, fórmulas y límites: [Informe de análisis fundamental](INFORME_ANALISIS_FUNDAMENTAL.md).
 
-### 4. Interfaz y organización
+### 4. David Trullás
+
+- Página `trullas.html`, endpoint `/api/trullas` y motor `backend/app/trullas.py`.
+- Lista filtrable por texto, clase de activo (índice, acción/ETF, forex, futuro, cripto) y señal, con badge de fuerza relativa a 3 meses contra el ETF de su sector (SPY o BTC-USD como respaldo): Fuerte > +3 pp, Débil < −3 pp.
+- Gráfico Lightweight Charts con SMA 200 (azul), 70 (rojo) y 6 (verde), volumen, pivotes P1/P2, extremo absoluto, rayo P1→P2, proyección y líneas de 66 % y 61,8 %; estocástico lento (14, 3, 5) sincronizado debajo y enlace para abrir el símbolo en TradingView.
+- Velas diarias, de 5 minutos (60 días) o de 1 minuto (7 días). El filtro top-down y la fuerza relativa siempre usan velas diarias.
+- Cinco tarjetas: filtro top-down (mercado, sector, activo), señal de medias (Compra / Venta / Espera), divergencias de volumen y estocástico, objetivo de retroceso y ATR(14) con stop a 1,5, 2 o 3 ATR.
+- Se usa la divergencia alcista clásica: un mínimo más bajo con menos volumen indica menor presión vendedora.
+- No hay datos Level-2 ni footprint: el order flow se declara no disponible y se muestra el volumen relativo como aproximación.
+
+Son reglas heurísticas del proyecto, no una réplica certificada del método ni asesoría financiera.
+
+### 5. Interfaz y organización
 
 - Navegación entre las tres herramientas.
 - Cabeceras y contadores compactos para priorizar el gráfico.

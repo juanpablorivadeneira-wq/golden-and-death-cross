@@ -88,6 +88,58 @@ def radar_200(ma_type: str = "sma", refresh: bool = False, ticker: str | None = 
             "ma_trend_lookback": radar200.TREND_LOOKBACK, "items": results}
 
 
+@router.get("/trullas")
+def trullas_diagnostic(interval: str = "1d", ticker: str | None = None,
+                       atr_mult: float = 2.0, refresh: bool = False):
+    """Pestaña David Trullás. Sin `ticker`: resumen diario de toda la watchlist
+    (badge de fuerza relativa y señal). Con `ticker`: diagnóstico completo en
+    el intervalo pedido, con series para el gráfico."""
+    from concurrent.futures import ThreadPoolExecutor
+    from .. import trullas
+    if interval not in ("1d", "5m", "1m"):
+        raise HTTPException(status_code=422, detail="Intervalo inválido")
+    if not 0.5 <= atr_mult <= 5:
+        raise HTTPException(status_code=422, detail="Multiplicador ATR fuera de rango (0.5–5)")
+
+    def daily_or_none(symbol: str | None):
+        if not symbol:
+            return None
+        try:
+            return market.get_bars(symbol, force=refresh)
+        except market.MarketError:
+            return None
+
+    def analyze_one(t: str, detail: bool) -> dict:
+        try:
+            daily = market.get_bars(t, force=refresh)
+            bars = daily if interval == "1d" or not detail else market.get_intraday_bars(t, interval, force=refresh)
+        except market.MarketError as exc:
+            cls = trullas.asset_class(t)
+            return {"ticker": t, "asset_class": cls,
+                    "asset_class_label": trullas.ASSET_CLASS_LABEL[cls], "error": str(exc)}
+        bench = trullas.benchmarks_for(t)
+        return trullas.analyze(t, bars, daily=daily, market=daily_or_none(bench["market"]),
+                               sector=daily_or_none(bench["sector"]), bench=bench,
+                               interval=interval if detail else "1d", atr_mult=atr_mult,
+                               include_series=detail)
+
+    groups = {r["ticker"]: r["group_name"] for r in db.get_watchlist()}
+    if ticker:
+        ticker = ticker.strip().upper()
+        item = analyze_one(ticker, True)
+        item["group"] = groups.get(ticker)
+        return {"interval": interval, "item": item}
+
+    def summary(t: str) -> dict:
+        result = analyze_one(t, False)
+        result["group"] = groups[t]
+        return result
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        items = list(pool.map(summary, groups))
+    return {"interval": "1d", "items": items}
+
+
 @router.get("/fundamentals/{ticker}")
 def get_fundamentals(ticker: str, refresh: bool = False) -> dict:
     from concurrent.futures import ThreadPoolExecutor

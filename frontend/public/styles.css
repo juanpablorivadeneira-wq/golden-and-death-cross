@@ -340,3 +340,48 @@
 .research-tools textarea { width:100%; box-sizing:border-box; margin:10px 0; background:var(--bg); color:var(--text); padding:10px; border:1px solid var(--line); border-radius:6px; resize:vertical; }
 .research-report { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; font:11px/1.6 var(--mono); color:var(--muted); }
 @media(max-width:760px) { .research-metrics { grid-template-columns:1fr; } }
+
+/* David Trullás: lista | gráfico + estocástico | diagnóstico */
+.trullas main { grid-template-columns: 270px minmax(0,1fr) 340px; height: 780px; }
+.trullas .diag-panel { border:1px solid var(--line); background:var(--panel); border-radius:12px; overflow-y:auto; min-width:0; padding:12px; display:flex; flex-direction:column; gap:9px; }
+.trullas .add-row + .add-row { margin-top:-2px; }
+.trullas #tr-search { flex:1; }
+#tr-chart { flex:1 1 0; min-height:0; overflow:hidden; }
+#tr-stoch { flex:0 0 120px; height:120px; border-top:1px solid var(--line); overflow:hidden; }
+.sw.tr200 { background:#3b82f6; } .sw.tr70 { background:#ef4444; } .sw.tr6 { background:#22c55e; }
+.sw.trray { background:var(--gold); height:3px; } .sw.trtarget { background:repeating-linear-gradient(90deg,var(--gold) 0 4px,transparent 4px 7px); }
+.tv-link { font-size:11px; color:var(--gold); border:1px solid #e7c46a50; border-radius:7px; padding:6px 10px; white-space:nowrap; }
+.tv-link:hover { background:var(--gold-dim); }
+.tr-class { font:10px var(--sans); color:var(--muted); }
+.tr-chips { display:flex; gap:4px; }
+.tr-chip { font-size:9px; padding:2px 6px; border-radius:4px; background:#ffffff0d; color:var(--muted); }
+.tr-chip.golden { background:var(--gold-dim); color:var(--gold); }
+.tr-chip.death { background:var(--death-dim); color:var(--death); }
+.rs-badge { font-size:9px; letter-spacing:.3px; padding:3px 6px; border-radius:4px; border:1px solid currentColor; }
+.rs-strong { color:var(--ok); } .rs-neutral { color:var(--muted); } .rs-weak { color:var(--death); } .rs-none { color:#4c5a68; }
+dd.rs-strong, dd.rs-neutral, dd.rs-weak { border:0; }
+.diag-title { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:2px 2px 6px; border-bottom:1px solid var(--line); }
+.diag-title h2 { margin:0; font-size:20px; letter-spacing:-.4px; }
+.diag-title span { color:var(--muted); font-size:11px; }
+.diag-card { --signal: var(--line); border:1px solid var(--line); border-top:2px solid var(--signal); border-radius:8px; background:#151f2a; padding:10px 12px; }
+.diag-card.golden { --signal:#72c8a6; } .diag-card.death { --signal:#ee8791; } .diag-card.gold { --signal:var(--gold); }
+.diag-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.diag-head h3 { margin:0; font:600 11px var(--sans); letter-spacing:.3px; color:#adbac9; text-transform:uppercase; }
+.diag-state { font:600 14px var(--mono); color:var(--text); text-align:right; }
+.diag-state.golden { color:#72c8a6; } .diag-state.death { color:#ee8791; } .diag-state.gold { color:var(--gold); }
+.diag-rows { display:grid; grid-template-columns:auto minmax(0,1fr); gap:5px 10px; margin:9px 0 0; font-size:11px; }
+.diag-rows dt { color:var(--muted); }
+.diag-rows dd { margin:0; text-align:right; font-family:var(--mono); overflow-wrap:anywhere; }
+.diag-rows dd.golden { color:#72c8a6; } .diag-rows dd.death { color:#ee8791; } .diag-rows dd.gold { color:var(--gold); } .diag-rows dd.fib { color:#c084fc; }
+.diag-note { margin:8px 0 0; font-size:10.5px; line-height:1.5; color:var(--muted); }
+.trullas .method-note b { color:var(--text); font-weight:600; }
+@media (max-width:1280px) and (min-width:761px) {
+  .trullas main { grid-template-columns: 270px minmax(0,1fr); grid-template-rows: 700px auto; height:auto; }
+  .trullas .diag-panel { grid-column: 1 / -1; display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); overflow:visible; }
+  .trullas .diag-title { grid-column: 1 / -1; }
+}
+@media (max-width:760px) {
+  .trullas main { height:auto; }
+  .trullas .chart-panel { height:620px; min-height:620px; flex-basis:620px; }
+  .trullas .diag-panel { overflow:visible; }
+}

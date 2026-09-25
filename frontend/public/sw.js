@@ -4,7 +4,7 @@
 // - notificaciones push del servidor
 "use strict";
 
-const CACHE = "cross-monitor-v8";
+const CACHE = "cross-monitor-v9";
 const STATIC_ASSETS = [
   "/",
   "/index.html",
@@ -12,6 +12,8 @@ const STATIC_ASSETS = [
   "/radar200.js",
   "/fundamentals.html",
   "/fundamentals.js",
+  "/trullas.html",
+  "/trullas.js",
   "/groups.js",
   "/styles.css",
   "/app.js",

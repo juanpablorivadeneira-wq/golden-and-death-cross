@@ -5,12 +5,17 @@ from pydantic import BaseModel
 
 
 class Bar(BaseModel):
-    """Barra OHLC diaria; t en segundos Unix (UTC, medianoche)."""
+    """Barra OHLC diaria; t en segundos Unix (UTC, medianoche).
+
+    `v` (volumen) es opcional: índices, forex y algunos proveedores no lo
+    informan, y ningún cálculo previo lo necesitaba.
+    """
     t: int
     o: float
     h: float
     l: float
     c: float
+    v: Optional[float] = None
 
 
 class TickerMetrics(BaseModel):
