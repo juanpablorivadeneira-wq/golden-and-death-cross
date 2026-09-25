@@ -71,7 +71,7 @@ Detalles, fórmulas y límites: [Informe de análisis fundamental](INFORME_ANALI
 - Se usa la divergencia alcista clásica: un mínimo más bajo con menos volumen indica menor presión vendedora.
 - Reglas contrastadas con la transcripción del directo de Trullás: corto solo si la SMA 70 también está bajo la SMA 200, y el retroceso del 50 % se marca junto al 66 % y el 61,8 %.
 - Video del directo al final de la página, plegable, con un índice de 32 tramos armado desde su transcripción automática; cada tramo salta a su minuto e indica qué tarjeta del diagnóstico explica.
-- Resumen en video preparado con NotebookLM (`frontend/public/media/metodologia-david-trullas.mp4`, 6 min 37 s), plegable. El MP4 no se sube al repositorio (`.gitignore`): existe solo en la PC donde se copió, y si falta la página indica dónde colocarlo. El servidor local (`run_local.py`) atiende peticiones por rango para poder adelantarlo, y el service worker deja pasar `/media/` sin guardarlo en caché.
+- Dos resúmenes en video preparados con NotebookLM, lado a lado en un mismo desplegable: `frontend/public/media/metodologia-david-trullas.mp4` (6 min 37 s) y `metodo-david-trullas-2.mp4` (4 min 37 s). Solo suena uno a la vez. Los MP4 no se suben al repositorio (`.gitignore`): existen solo en la PC donde se copiaron, y si falta alguno la página indica dónde colocarlo. El servidor local (`run_local.py`) atiende peticiones por rango para poder adelantarlo, y el service worker deja pasar `/media/` sin guardarlo en caché.
 - No hay datos Level-2 ni footprint: el order flow se declara no disponible y se muestra el volumen relativo como aproximación.
 
 Son reglas heurísticas del proyecto, no una réplica certificada del método ni asesoría financiera.

@@ -503,24 +503,30 @@ $("method-video").addEventListener("toggle", e => {
   else frame.removeAttribute("src");
 });
 
-// Resumen de NotebookLM (archivo local): mismo criterio que el directo, se
-// descarga al abrir y se pausa al cerrar para que no siga sonando oculto.
+// Resúmenes de NotebookLM (archivos locales): mismo criterio que el directo,
+// se asignan al abrir y se pausan al cerrar para que no sigan sonando ocultos.
 $("nlm-video").addEventListener("toggle", e => {
-  const video = e.target.querySelector("video");
-  if (!video) return; // ya se reemplazó por el aviso de archivo ausente
-  if (e.target.open) { if (!video.getAttribute("src")) video.src = video.dataset.src; }
-  else video.pause();
+  for (const video of e.target.querySelectorAll("video")) {
+    if (e.target.open) { if (!video.getAttribute("src")) video.src = video.dataset.src; }
+    else video.pause();
+  }
 });
-// El video no está en el repositorio (.gitignore): en otra PC, Docker o el
-// .exe compilado en GitHub falta, y se avisa en vez de dejar un reproductor vacío.
-// Solo si nunca llegó a cargar nada: un corte de red a mitad de la reproducción
-// (PC suspendida, servidor reiniciado) no debe hacer desaparecer el reproductor.
-$("nlm-video").querySelector("video").addEventListener("error", e => {
-  if (e.target.readyState !== HTMLMediaElement.HAVE_NOTHING) return;
-  const note = el("p", "video-missing", "El video no está en esta instalación. Copia el MP4 descargado de NotebookLM a ");
-  note.append(el("code", null, "frontend/public/media/metodologia-david-trullas.mp4"), document.createTextNode(" y recarga la página."));
-  e.target.closest(".video-frame").replaceWith(note);
-});
+for (const video of $("nlm-video").querySelectorAll("video")) {
+  // Uno a la vez: al reproducir un resumen se pausa el otro.
+  video.addEventListener("play", () => {
+    for (const other of $("nlm-video").querySelectorAll("video")) if (other !== video) other.pause();
+  });
+  // Los MP4 no están en el repositorio (.gitignore): en otra PC, Docker o el
+  // .exe compilado en GitHub faltan, y se avisa en vez de dejar un reproductor
+  // vacío. Solo si nunca llegó a cargar nada: un corte de red a mitad de la
+  // reproducción (PC suspendida, servidor reiniciado) no debe quitar el reproductor.
+  video.addEventListener("error", () => {
+    if (video.readyState !== HTMLMediaElement.HAVE_NOTHING) return;
+    const note = el("p", "video-missing", "Este video no está en esta instalación. Copia el MP4 descargado de NotebookLM a ");
+    note.append(el("code", null, `frontend/public/${video.dataset.src}`), document.createTextNode(" y recarga la página."));
+    video.closest(".video-frame").replaceWith(note);
+  });
+}
 
 // Índice del directo, armado a partir de su transcripción automática. El
 // tercer campo es la tarjeta del diagnóstico que aplica ese tramo; el resto

@@ -412,3 +412,9 @@ dd.rs-strong, dd.rs-neutral, dd.rs-weak { border:0; }
 .video-missing { margin:16px 22px 20px; padding:14px 16px; border:1px dashed var(--line); border-radius:8px; color:var(--muted); font-size:12px; line-height:1.6; }
 .video-missing code { color:var(--gold); font:11px var(--mono); overflow-wrap:anywhere; }
 .sw.tr50 { background:repeating-linear-gradient(90deg,#5fb3c9 0 4px,transparent 4px 7px); }
+.video-pair { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:16px 22px 20px; max-width:1004px; margin:0 auto; }
+.video-pair figure { margin:0; min-width:0; }
+.video-pair .video-frame { width:100%; margin:0; }
+.video-pair figcaption { margin-top:8px; font-size:11px; color:var(--muted); text-align:center; }
+.video-pair .video-missing { margin:0; }
+@media (max-width:760px) { .video-pair { grid-template-columns:1fr; padding:12px; } }
